@@ -61,8 +61,7 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 	appSpecVolumes := app.Spec.Volumes
 
 	// Create Application ID with the convention followed in Scala/Java
-	uuidString := uuid.New().String()
-	uuidString = strings.ReplaceAll(uuidString, "-", "")
+	uuidString := strings.ReplaceAll(uuid.New().String(), "-", "")
 	createdApplicationId := fmt.Sprintf("%s-%s", Spark, uuidString)
 
 	//Updte Application CRD Instnce with Spark Application ID
@@ -77,12 +76,14 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 	app.Status.SubmissionID = submissionID
 
 	//Create Service Labels by aggregating Spark Application Specification level, driver specification level and dynamic lables
-	serviceLabels := map[string]string{SparkAppNameLabel: app.Name}
-	serviceLabels[SparkAppName] = app.Name
-	serviceLabels[SparkApplicationSelectorLabel] = createdApplicationId
-	serviceLabels[SparkRoleLabel] = SparkDriverRole
-	serviceLabels[SparkAppSubmissionIDAnnotation] = submissionID
-	serviceLabels[SparkAppLauncherSOAnnotation] = True
+	serviceLabels := map[string]string{
+		SparkAppNameLabel:              app.Name,
+		SparkAppName:                   app.Name,
+		SparkApplicationSelectorLabel:  createdApplicationId,
+		SparkRoleLabel:                 SparkDriverRole,
+		SparkAppSubmissionIDAnnotation: submissionID,
+		SparkAppLauncherSOAnnotation:   True,
+	}
 
 	if app.Spec.Driver.Labels != nil {
 		_, versionLabelExists := app.Spec.Driver.Labels[Version]
@@ -113,7 +114,7 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 	//Spark Application ConfigMap Creation
 	createErr := configmap.Create(app, submissionID, createdApplicationId, kubeClient, driverConfigMapName, serviceName)
 	if createErr != nil {
-		return false, fmt.Errorf("error while creating config mape: %w", createErr)
+		return false, fmt.Errorf("error while creating config map: %w", createErr)
 	}
 
 	//Spark Application Driver Pod Creation
@@ -131,7 +132,7 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 
 // getServiceName Helper function to get Spark Application Driver Pod's Service Name
 func getServiceName(app *v1beta2.SparkApplication) string {
-	driverPodServiceName := common.GetDriverPodName(app) + ServiceNameExtension
+	driverPodServiceName := fmt.Sprintf("%s%s", common.GetDriverPodName(app), ServiceNameExtension)
 	if !(len(driverPodServiceName) <= KubernetesDNSLabelNameMaxLength) {
 		timeInString := strconv.Itoa(int(time.Now().Unix()))
 		randomHexString, _ := randomHex(10)

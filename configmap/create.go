@@ -3,6 +3,7 @@ package configmap
 import (
 	"fmt"
 	"nativesubmit/common"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,94 +45,114 @@ func Create(app *v1beta2.SparkApplication, submissionID string, createdApplicati
 // Helper func to create key/value pairs required for the Spark Application Configmap
 // Majority of the code borrowed from Scala implementation
 func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName string, submissionID string, createdApplicationId string, serviceName string) (string, error) {
-	var args string
+	var sb strings.Builder
 	sparkConfKeyValuePairs := app.Spec.SparkConf
 	masterURL, err := getMasterURL()
 	if err != nil {
-		return args, err
+		return sb.String(), err
 	}
 	masterURL = AddEscapeCharacter(masterURL)
 
 	//Construct Service Name
 	//<servicename>.<namespace>.svc
-	serviceName = serviceName + DotSeparator + app.Namespace + DotSeparator + ServiceShortForm
+	serviceName = fmt.Sprintf("%s.%s.%s", serviceName, app.Namespace, ServiceShortForm)
 
-	args = args + fmt.Sprintf("%s=%s", SparkDriverHost, serviceName) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverHost, serviceName))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkAppId, createdApplicationId) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkAppId, createdApplicationId))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkMaster, masterURL) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkMaster, masterURL))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkSubmitDeploymentMode, string(app.Spec.Mode)) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkSubmitDeploymentMode, string(app.Spec.Mode)))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkAppNamespaceKey, app.Namespace) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkAppNamespaceKey, app.Namespace))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkAppNameKey, app.Name) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkAppNameKey, app.Name))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkDriverPodNameKey, driverPodName) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverPodNameKey, driverPodName))
+	sb.WriteString(NewLineString)
 
-	args = populateArtifacts(args, *app)
+	sb.WriteString(populateArtifacts(sb.String(), *app))
 
-	args = populateContainerImageDetails(args, *app)
+	sb.WriteString(populateContainerImageDetails(sb.String(), *app))
 	if app.Spec.PythonVersion != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkPythonVersion, *app.Spec.PythonVersion) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkPythonVersion, *app.Spec.PythonVersion))
+		sb.WriteString(NewLineString)
 	}
 	if app.Spec.MemoryOverheadFactor != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkMemoryOverheadFactor, *app.Spec.MemoryOverheadFactor) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkMemoryOverheadFactor, *app.Spec.MemoryOverheadFactor))
+		sb.WriteString(NewLineString)
 	} else {
 
-		args = args + fmt.Sprintf("%s=%s", SparkMemoryOverheadFactor, common.GetMemoryOverheadFactor(app)) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkMemoryOverheadFactor, common.GetMemoryOverheadFactor(app)))
+		sb.WriteString(NewLineString)
 	}
 
 	// Operator triggered spark-submit should never wait for App completion
-	args = args + fmt.Sprintf("%s=false", SparkWaitAppCompletion) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=false", SparkWaitAppCompletion))
+	sb.WriteString(NewLineString)
 
-	args = populateSparkConfProperties(args, sparkConfKeyValuePairs)
+	sb.WriteString(populateSparkConfProperties(sb.String(), sparkConfKeyValuePairs))
 
 	// Add Hadoop configuration properties.
 	for key, value := range app.Spec.HadoopConf {
-		args = args + fmt.Sprintf("spark.hadoop.%s=%s", key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("spark.hadoop.%s=%s", key, value))
+		sb.WriteString(NewLineString)
 	}
 	if app.Spec.HadoopConf != nil || app.Spec.HadoopConfigMap != nil {
 		// Adding Environment variable
-		args = args + fmt.Sprintf("spark.hadoop.%s=%s", HadoopConfDir, HadoopConfDirPath) + NewLineString
+		sb.WriteString(fmt.Sprintf("spark.hadoop.%s=%s", HadoopConfDir, HadoopConfDirPath))
+		sb.WriteString(NewLineString)
 	}
 
 	// Add the driver and executor configuration options.
 	// Note that when the controller submits the application, it expects that all dependencies are local
 	// so init-container is not needed and therefore no init-container image needs to be specified.
-	args = args + fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, SparkAppNameLabel, app.Name) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, SparkAppNameLabel, app.Name))
+	sb.WriteString(NewLineString)
 	//driverConfOptions = append(driverConfOptions,
-	args = args + fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, LaunchedBySparkOperatorLabel, "true") + NewLineString
+	sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, LaunchedBySparkOperatorLabel, "true"))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, SubmissionIDLabel, submissionID) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, SubmissionIDLabel, submissionID))
+	sb.WriteString(NewLineString)
 
 	if app.Spec.Driver.Image != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverContainerImageKey, *app.Spec.Driver.Image) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverContainerImageKey, *app.Spec.Driver.Image))
+		sb.WriteString(NewLineString)
 	}
 
-	args, err = populateComputeInfo(args, *app, sparkConfKeyValuePairs)
+	sb, err = populateComputeInfo(sb, *app, sparkConfKeyValuePairs)
 	if err != nil {
-		return "Driver cores should be an integer", err
+		return "driver cores should be an integer", err
 	}
 
-	args = populateMemoryInfo(args, *app, sparkConfKeyValuePairs)
+	sb.WriteString(populateMemoryInfo(sb.String(), *app, sparkConfKeyValuePairs))
 
 	if app.Spec.Driver.ServiceAccount != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverServiceAccountName, *app.Spec.Driver.ServiceAccount) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverServiceAccountName, *app.Spec.Driver.ServiceAccount))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Driver.JavaOptions != nil {
 		driverJavaOptionsList := AddEscapeCharacter(*app.Spec.Driver.JavaOptions)
-		args = args + fmt.Sprintf("%s=%s", SparkDriverJavaOptions, driverJavaOptionsList) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverJavaOptions, driverJavaOptionsList))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Driver.KubernetesMaster != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverKubernetesMaster, *app.Spec.Driver.KubernetesMaster) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverKubernetesMaster, *app.Spec.Driver.KubernetesMaster))
+		sb.WriteString(NewLineString)
 	}
 
 	//Populate SparkApplication Labels to Driver
-	driverLabels := make(map[string]string)
+	driverLabels := make(map[string]string, len(app.Labels)+len(app.Spec.Driver.Labels))
 	for key, value := range app.Labels {
 		driverLabels[key] = value
 	}
@@ -140,53 +161,65 @@ func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName 
 	}
 
 	for key, value := range driverLabels {
-		args = args + fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverLabelKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
-	args = populateDriverAnnotations(args, *app)
+	sb.WriteString(populateDriverAnnotations(sb.String(), *app))
 
 	for key, value := range app.Spec.Driver.EnvSecretKeyRefs {
-		args = args + fmt.Sprintf("%s%s=%s:%s", SparkDriverSecretKeyRefKeyPrefix, key, value.Name, value.Key) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s:%s", SparkDriverSecretKeyRefKeyPrefix, key, value.Name, value.Key))
+		sb.WriteString(NewLineString)
 	}
 
 	for key, value := range app.Spec.Driver.ServiceAnnotations {
-		args = args + fmt.Sprintf("%s%s=%s", SparkDriverServiceAnnotationKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverServiceAnnotationKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 
-	args = populateDriverSecrets(args, *app)
+	sb.WriteString(populateDriverSecrets(sb.String(), *app))
 
 	for key, value := range app.Spec.Driver.EnvVars {
-		args = args + fmt.Sprintf("%s%s=%s", SparkDriverEnvVarConfigKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverEnvVarConfigKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 
 	}
 
 	for key, value := range app.Spec.Driver.Env {
-		args = args + fmt.Sprintf("%s%d=%s", SparkDriverEnvVarConfigKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%d=%s", SparkDriverEnvVarConfigKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 
-	args = args + fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, SparkAppNameLabel, app.Name) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, SparkAppNameLabel, app.Name))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, LaunchedBySparkOperatorLabel, "true") + NewLineString
+	sb.WriteString(fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, LaunchedBySparkOperatorLabel, "true"))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, SubmissionIDLabel, submissionID) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, SubmissionIDLabel, submissionID))
+	sb.WriteString(NewLineString)
 
 	if app.Spec.Executor.Instances != nil {
-		args = args + fmt.Sprintf("spark.executor.instances=%d", *app.Spec.Executor.Instances) + NewLineString
+		sb.WriteString(fmt.Sprintf("spark.executor.instances=%d", *app.Spec.Executor.Instances))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Executor.Image != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkExecutorContainerImageKey, *app.Spec.Executor.Image) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkExecutorContainerImageKey, *app.Spec.Executor.Image))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Executor.ServiceAccount != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkExecutorAccountName, *app.Spec.Executor.ServiceAccount) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkExecutorAccountName, *app.Spec.Executor.ServiceAccount))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Executor.DeleteOnTermination != nil {
-		args = args + fmt.Sprintf("%s=%t", SparkExecutorDeleteOnTermination, *app.Spec.Executor.DeleteOnTermination) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%t", SparkExecutorDeleteOnTermination, *app.Spec.Executor.DeleteOnTermination))
+		sb.WriteString(NewLineString)
 	}
 
 	//Populate SparkApplication Labels to Executors
-	executorLabels := make(map[string]string)
+	executorLabels := make(map[string]string, len(app.Labels)+len(app.Spec.Executor.Labels))
 	for key, value := range app.Labels {
 		executorLabels[key] = value
 	}
@@ -194,78 +227,93 @@ func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName 
 		executorLabels[key] = value
 	}
 	for key, value := range executorLabels {
-		args = args + fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkExecutorLabelKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 
-	args = populateExecutorAnnotations(args, *app)
+	sb.WriteString(populateExecutorAnnotations(sb.String(), *app))
 
 	for key, value := range app.Spec.Executor.EnvSecretKeyRefs {
-		args = args + fmt.Sprintf("%s%s=%s:%s", SparkExecutorSecretKeyRefKeyPrefix, key, value.Name, value.Key) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s:%s", SparkExecutorSecretKeyRefKeyPrefix, key, value.Name, value.Key))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Executor.JavaOptions != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkExecutorJavaOptions, *app.Spec.Executor.JavaOptions) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkExecutorJavaOptions, *app.Spec.Executor.JavaOptions))
+		sb.WriteString(NewLineString)
 	}
 
-	args = populateExecutorSecrets(args, *app)
+	sb.WriteString(populateExecutorSecrets(sb.String(), *app))
 
 	for key, value := range app.Spec.Executor.EnvVars {
-		args = args + fmt.Sprintf("%s%s=%s", SparkExecutorEnvVarConfigKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkExecutorEnvVarConfigKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 
-	args = populateDynamicAllocation(args, *app)
+	sb.WriteString(populateDynamicAllocation(sb.String(), *app))
 	for key, value := range app.Spec.NodeSelector {
-		args = args + fmt.Sprintf("%s%s=%s", SparkNodeSelectorKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkNodeSelectorKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 	for key, value := range app.Spec.Driver.NodeSelector {
-		args = args + fmt.Sprintf("%s%s=%s", SparkDriverNodeSelectorKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkDriverNodeSelectorKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 	for key, value := range app.Spec.Executor.NodeSelector {
-		args = args + fmt.Sprintf("%s%s=%s", SparkExecutorNodeSelectorKeyPrefix, key, value) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s%s=%s", SparkExecutorNodeSelectorKeyPrefix, key, value))
+		sb.WriteString(NewLineString)
 	}
 
-	args = args + fmt.Sprintf("%s=%s", SubmitInDriver, True) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SubmitInDriver, True))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%v", SparkDriverBlockManagerPort, common.DefaultBlockManagerPort) + NewLineString
-	//
-	args = args + fmt.Sprintf("%s=%v", common.SparkDriverPort, common.GetDriverPort(sparkConfKeyValuePairs)) + NewLineString
-	//
-	args = populateAppSpecType(args, *app)
+	sb.WriteString(fmt.Sprintf("%s=%v", SparkDriverBlockManagerPort, common.DefaultBlockManagerPort))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%v", SparkApplicationSubmitTime, time.Now().UnixMilli()) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%v", common.SparkDriverPort, common.GetDriverPort(sparkConfKeyValuePairs)))
+	sb.WriteString(NewLineString)
+	sb.WriteString(populateAppSpecType(sb.String(), *app))
+	sb.WriteString(NewLineString)
+	sb.WriteString(fmt.Sprintf("%s=%v", SparkApplicationSubmitTime, time.Now().UnixMilli()))
+	sb.WriteString(NewLineString)
 
-	sparkUIProxyBase := ForwardSlash + common.GetAppNamespace(app) + ForwardSlash + app.Name
+	sparkUIProxyBase := path.Join(ForwardSlash, common.GetAppNamespace(app), app.Name)
 
-	args = args + fmt.Sprintf("%s=%s", SparkUIProxyBase, sparkUIProxyBase) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkUIProxyBase, sparkUIProxyBase))
+	sb.WriteString(NewLineString)
 
-	args = args + fmt.Sprintf("%s=%s", SparkUIProxyRedirectURI, ForwardSlash) + NewLineString
+	sb.WriteString(fmt.Sprintf("%s=%s", SparkUIProxyRedirectURI, ForwardSlash))
+	sb.WriteString(NewLineString)
 
-	args = populateProperties(args)
+	sb.WriteString(populateProperties(sb.String()))
 
-	args = populateMonitoringInfo(args, *app)
+	sb.WriteString(populateMonitoringInfo(sb.String(), *app))
 
 	// Volumes
 	if app.Spec.Volumes != nil {
 		options, err := addLocalDirConfOptions(app)
 		if err != nil {
-			return "Error occcurred while building configmap", err
+			return "error occcurred while building configmap", err
 		}
 		for _, option := range options {
-			args = args + option + NewLineString
+			sb.WriteString(option)
+			sb.WriteString(NewLineString)
 		}
 	}
 
 	if app.Spec.MainApplicationFile != nil {
 		// Add the main application file if it is present.
 		sparkAppJar := AddEscapeCharacter(*app.Spec.MainApplicationFile)
-		args = args + fmt.Sprintf("%s=%s", SparkJars, sparkAppJar) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkJars, sparkAppJar))
+		sb.WriteString(NewLineString)
 	}
 	// Add application arguments.
 	for _, argument := range app.Spec.Arguments {
-		args = args + argument + NewLineString
+		sb.WriteString(argument)
+		sb.WriteString(NewLineString)
 	}
 
-	return args, nil
+	return sb.String(), nil
 }
 func populateDriverAnnotations(args string, app v1beta2.SparkApplication) string {
 	for key, value := range app.Spec.Driver.Annotations {
@@ -404,7 +452,7 @@ func populateMonitoringInfo(args string, app v1beta2.SparkApplication) string {
 }
 func populateArtifacts(args string, app v1beta2.SparkApplication) string {
 	if len(app.Spec.Deps.Jars) > 0 {
-		modifiedJarList := make([]string, 0)
+		modifiedJarList := make([]string, 0, len(app.Spec.Deps.Jars))
 		for _, sparkjar := range app.Spec.Deps.Jars {
 			sparkjar = AddEscapeCharacter(sparkjar)
 			modifiedJarList = append(modifiedJarList, sparkjar)
@@ -442,37 +490,46 @@ func populateContainerImageDetails(args string, app v1beta2.SparkApplication) st
 	}
 	return args
 }
-func populateComputeInfo(args string, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) (string, error) {
+func populateComputeInfo(sb strings.Builder, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) (strings.Builder, error) {
 	if app.Spec.Driver.Cores != nil {
-		args = args + fmt.Sprintf("%s=%d", SparkDriverCores, *app.Spec.Driver.Cores) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%d", SparkDriverCores, *app.Spec.Driver.Cores))
+		sb.WriteString(NewLineString)
 	} else if common.CheckSparkConf(sparkConfKeyValuePairs, SparkDriverCores) {
 		driverCores, err := strconv.ParseInt(sparkConfKeyValuePairs[SparkDriverCores], 10, 32)
 		if err != nil {
-			return "Driver cores should be an integer", err
+			return sb, err
 		}
-		args = args + fmt.Sprintf("%s=%d", SparkDriverCores, driverCores) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%d", SparkDriverCores, driverCores))
+		sb.WriteString(NewLineString)
 	} else { // Driver default cores
-		args = args + fmt.Sprintf("%s=%s", SparkDriverCores, DriverDefaultCores) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverCores, DriverDefaultCores))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Driver.CoreRequest != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverCoreRequestKey, *app.Spec.Driver.CoreRequest) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverCoreRequestKey, *app.Spec.Driver.CoreRequest))
+		sb.WriteString(NewLineString)
 	} else if common.CheckSparkConf(sparkConfKeyValuePairs, SparkDriverCoreRequestKey) {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverCoreRequestKey, sparkConfKeyValuePairs[SparkDriverCoreRequestKey]) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverCoreRequestKey, sparkConfKeyValuePairs[SparkDriverCoreRequestKey]))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Driver.CoreLimit != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverCoreLimitKey, *app.Spec.Driver.CoreLimit) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverCoreLimitKey, *app.Spec.Driver.CoreLimit))
+		sb.WriteString(NewLineString)
 	} else if common.CheckSparkConf(sparkConfKeyValuePairs, SparkDriverCoreLimitKey) {
-		args = args + fmt.Sprintf("%s=%s", SparkDriverCoreLimitKey, sparkConfKeyValuePairs[SparkDriverCoreLimitKey]) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkDriverCoreLimitKey, sparkConfKeyValuePairs[SparkDriverCoreLimitKey]))
+		sb.WriteString(NewLineString)
 	}
 
 	if app.Spec.Executor.CoreRequest != nil {
-		args = args + fmt.Sprintf("%s=%s", SparkExecutorCoreRequestKey, *app.Spec.Executor.CoreRequest) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkExecutorCoreRequestKey, *app.Spec.Executor.CoreRequest))
+		sb.WriteString(NewLineString)
 	} else if common.CheckSparkConf(sparkConfKeyValuePairs, SparkExecutorCoreRequestKey) {
-		args = args + fmt.Sprintf("%s=%s", SparkExecutorCoreRequestKey, sparkConfKeyValuePairs[SparkExecutorCoreRequestKey]) + NewLineString
+		sb.WriteString(fmt.Sprintf("%s=%s", SparkExecutorCoreRequestKey, sparkConfKeyValuePairs[SparkExecutorCoreRequestKey]))
+		sb.WriteString(NewLineString)
 	}
-	return args, nil
+	return sb, nil
 }
 func populateMemoryInfo(args string, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) string {
 	if app.Spec.Driver.Memory != nil {
@@ -515,10 +572,10 @@ func populateMemoryInfo(args string, app v1beta2.SparkApplication, sparkConfKeyV
 	if app.Spec.Executor.MemoryOverhead != nil {
 		args = args + fmt.Sprintf("spark.executor.memoryOverhead=%v", *app.Spec.Executor.MemoryOverhead) + NewLineString
 	} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.executor.memoryOverhead") {
-		memoryOverhead, _ := app.Spec.SparkConf["spark.executor.memoryOverhead"]
+		memoryOverhead := app.Spec.SparkConf["spark.executor.memoryOverhead"]
 		args = args + fmt.Sprintf("spark.executor.memoryOverhead=%v", memoryOverhead) + NewLineString
 	} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.kubernetes.memoryOverhead") {
-		memoryOverhead, _ := app.Spec.SparkConf["spark.kubernetes.memoryOverhead"]
+		memoryOverhead := app.Spec.SparkConf["spark.kubernetes.memoryOverhead"]
 		args = args + fmt.Sprintf("spark.executor.memoryOverhead=%v", memoryOverhead) + NewLineString
 	}
 
