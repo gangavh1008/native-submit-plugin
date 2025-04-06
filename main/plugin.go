@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/kubeflow/spark-operator/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -14,6 +15,10 @@ func (a *NativeSubmit) LaunchSparkApplication(app *v1beta2.SparkApplication, cl 
 	return nil
 }
 
-func New() v1beta2.SparkAppLauncher {
+func New() interface{} {
 	return &NativeSubmit{}
+}
+
+func main() {
+	fmt.Println("Native Submit Plugin")
 }
