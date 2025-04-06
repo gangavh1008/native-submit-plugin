@@ -451,7 +451,7 @@ func populateComputeInfo(args string, app v1beta2.SparkApplication, sparkConfKey
 			return "Driver cores should be an integer", err
 		}
 		args = args + fmt.Sprintf("%s=%d", SparkDriverCores, driverCores) + NewLineString
-	} else { // Driver default cores - https://git.soma.salesforce.com/dva-transformation/sfdc-spark/blob/branch-3.3.1-sfdc/core/src/main/scala/org/apache/spark/deploy/SparkSubmitArguments.scala#L550
+	} else { // Driver default cores
 		args = args + fmt.Sprintf("%s=%s", SparkDriverCores, DriverDefaultCores) + NewLineString
 	}
 
@@ -478,7 +478,7 @@ func populateMemoryInfo(args string, app v1beta2.SparkApplication, sparkConfKeyV
 
 	if app.Spec.Driver.Memory != nil {
 		args = args + fmt.Sprintf("spark.driver.memory=%s", *app.Spec.Driver.Memory) + NewLineString
-	} else { //Driver default memory - https://git.soma.salesforce.com/dva-transformation/sfdc-spark/blob/branch-3.3.1-sfdc/core/src/main/scala/org/apache/spark/deploy/SparkSubmitArguments.scala#L532
+	} else { //Driver default memory
 		args = args + fmt.Sprintf("spark.driver.memory=%s", DriverDefaultMemory) + NewLineString
 
 	}
@@ -510,7 +510,7 @@ func populateMemoryInfo(args string, app v1beta2.SparkApplication, sparkConfKeyV
 	if app.Spec.Executor.Memory != nil {
 		args = args + fmt.Sprintf("spark.executor.memory=%s", *app.Spec.Executor.Memory) + NewLineString
 	} else { //Setting default 1g
-		//Executor default memory - https://git.soma.salesforce.com/dva-transformation/sfdc-spark/blob/branch-3.3.1-sfdc/core/src/main/scala/org/apache/spark/deploy/SparkSubmitArguments.scala#L539
+		//Executor default memory
 		args = args + fmt.Sprintf("spark.executor.memory=%s", ExecutorDefaultMemory) + NewLineString
 	}
 

@@ -581,7 +581,6 @@ func checkMountingKubernetesCredentials(sparkConfKeyValuePairs map[string]string
 	return false
 }
 
-// Refers to codebase - https://git.soma.salesforce.com/dva-transformation/sfdc-spark/blob/branch-3.3.2-sfdc/resource-managers/kubernetes/core/src/main/scala/org/apache/spark/deploy/k8s/features/BasicDriverFeatureStep.scala#L79-L83
 func incorporateMemoryOvehead(memoryNumber int, app *v1beta2.SparkApplication, memoryUnit string) string {
 	//Memory Overhead or Memory OverheadFactor incorporating
 	var memory string

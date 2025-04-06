@@ -27,7 +27,7 @@ const (
 	SparkAppTypePythonWithP        = "Python"
 	SparkDriverExtraClassPath      = "spark.driver.extraClassPath"
 	SparkExecutorExtraClassPath    = "spark.executor.extraClassPath"
-	OpencensusPrometheusTarget     = "opencensus.k8s-integration.sfdc.com/prometheus-targets"
+	OpencensusPrometheusTarget     = "opencensus.k8s-integration.com/prometheus-targets"
 	SparkJars                      = "spark.jars"
 	SparkUIProxyRedirectURI        = "spark.ui.proxyRedirectUri"
 	SparkUIProxyBase               = "spark.ui.proxyBase"

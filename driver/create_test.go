@@ -63,14 +63,14 @@ func TestCreateSparkAppDriverPod(t *testing.T) {
 			test.app.Spec.SparkConf["spark.kubernetes.driver.node.selector.identifier"] = "testIdentifier"
 			test.app.Spec.SparkConf["spark.kubernetes.scheduler.name"] = "dummy-scheduler"
 			test.app.Spec.Image = nil
-			test.app.Spec.SparkConf["spark.kubernetes.container.image"] = "871501607754.dkr.ecr.us-west-2.amazonaws.com/sfci/dva-transformation/spark-on-k8s-sample-apps/flowsnake-basic-operator-integration-spark-3.3.2:jenkins-dva-transformation-spark-on-k8s-sample-apps-spark-3.3.2-sfdc-3-itest"
+			test.app.Spec.SparkConf["spark.kubernetes.container.image"] = "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"
 			test.app.Spec.SparkConf["spark.kubernetes.memoryOverhead"] = "10m"
 		}
 		if index == 1 {
 			test.app.Spec.Driver.SecurityContext = nil
 			test.app.Spec.ImagePullPolicy = nil
 			test.app.Spec.Image = nil
-			test.app.Spec.Driver.Image = common.StringPointer("871501607754.dkr.ecr.us-west-2.amazonaws.com/sfci/dva-transformation/spark-on-k8s-sample-apps/flowsnake-basic-operator-integration-spark-3.3.2:jenkins-dva-transformation-spark-on-k8s-sample-apps-spark-3.3.2-sfdc-3-itest")
+			test.app.Spec.Driver.Image = common.StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1")
 			test.app.Spec.Driver.Memory = nil
 			test.app.Spec.Driver.CoreLimit = nil
 			test.app.Spec.Driver.Cores = nil
@@ -90,7 +90,7 @@ func TestCreateSparkAppDriverPod(t *testing.T) {
 			test.app.Spec.Driver.InitContainers = []v1.Container{{Name: "test-init-container", Image: "test"}}
 			test.app.Spec.Image = nil
 			test.app.Spec.Driver.Image = nil
-			test.app.Spec.SparkConf["spark.kubernetes.driver.container.image"] = "871501607754.dkr.ecr.us-west-2.amazonaws.com/sfci/dva-transformation/spark-on-k8s-sample-apps/flowsnake-basic-operator-integration-spark-3.3.2:jenkins-dva-transformation-spark-on-k8s-sample-apps-spark-3.3.2-sfdc-3-itest"
+			test.app.Spec.SparkConf["spark.kubernetes.driver.container.image"] = "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"
 			test.app.Spec.ImagePullPolicy = nil
 			test.app.Spec.SparkConf["spark.kubernetes.container.image.pullPolicy"] = "IfNotPresent"
 			test.app.Spec.SparkConf["spark.driver.memoryOverhead"] = "10m"

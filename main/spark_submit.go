@@ -101,14 +101,12 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 	}
 	// labels passed in sparkConf
 	sparkConfKeyValuePairs := app.Spec.SparkConf
-	if sparkConfKeyValuePairs != nil {
-		for sparkConfKey, sparkConfValue := range sparkConfKeyValuePairs {
-			if strings.Contains(sparkConfKey, "spark.kubernetes.driver.label.") {
-				lastDotIndex := strings.LastIndex(sparkConfKey, DotSeparator)
-				labelKey := sparkConfKey[lastDotIndex+1:]
-				labelValue := sparkConfValue
-				serviceLabels[labelKey] = labelValue
-			}
+	for sparkConfKey, sparkConfValue := range sparkConfKeyValuePairs {
+		if strings.Contains(sparkConfKey, "spark.kubernetes.driver.label.") {
+			lastDotIndex := strings.LastIndex(sparkConfKey, DotSeparator)
+			labelKey := sparkConfKey[lastDotIndex+1:]
+			labelValue := sparkConfValue
+			serviceLabels[labelKey] = labelValue
 		}
 	}
 

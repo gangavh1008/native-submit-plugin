@@ -27,7 +27,7 @@ var TestApp = &v1beta2.SparkApplication{
 		HadoopConf:        map[string]string{"abc.def": "xyz", "jkl.ghi": "uvw"},
 		Type:              v1beta2.SparkApplicationTypeScala,
 		Mode:              v1beta2.DeployModeCluster,
-		Image:             StringPointer("871501607754.dkr.ecr.us-west-2.amazonaws.com/sfci/dva-transformation/spark-on-k8s-sample-apps/flowsnake-basic-operator-integration-spark-3.3.2:jenkins-dva-transformation-spark-on-k8s-sample-apps-spark-3.3.2-sfdc-3-itest"),
+		Image:             StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"),
 		ImagePullPolicy:   StringPointer("IfNotPresent"),
 		ImagePullSecrets: []string{
 			"dummy-data",
@@ -79,8 +79,8 @@ var TestApp = &v1beta2.SparkApplication{
 				ServiceAccount:   StringPointer("fit-driver-serviceaccount"),
 
 				Annotations: map[string]string{
-					"opencensus.k8s-integration.sfdc.com/inject":             "enabled",
-					"opencensus.k8s-integration.sfdc.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
+					"opencensus.k8s-integration.com/inject":             "enabled",
+					"opencensus.k8s-integration.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
 				},
 				PodSecurityContext: &corev1.PodSecurityContext{
 					RunAsUser:    Int64Pointer(185),
@@ -108,11 +108,11 @@ var TestApp = &v1beta2.SparkApplication{
 						},
 						Env: []corev1.EnvVar{
 							{
-								Name:  "LLDC_BUS",
-								Value: "einstein.test.streaming__aws.perf2-uswest2.einstein.ajnalocal1__strm.lldcbus",
+								Name:  "test",
+								Value: "test_value",
 							},
 						},
-						Image: "331455399823.dkr.ecr.us-east-2.amazonaws.com/sfci/monitoring/sfdc_rsyslog_gcp:latest",
+						Image: "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/rsyslog_gcp:latest",
 						Name:  "ccp-lldc",
 						Resources: corev1.ResourceRequirements{
 							Limits: corev1.ResourceList{
@@ -166,8 +166,8 @@ var TestApp = &v1beta2.SparkApplication{
 		Executor: v1beta2.ExecutorSpec{
 			SparkPodSpec: v1beta2.SparkPodSpec{
 				Annotations: map[string]string{
-					"opencensus.k8s-integration.sfdc.com/inject":             "enabled",
-					"opencensus.k8s-integration.sfdc.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
+					"opencensus.k8s-integration.com/inject":             "enabled",
+					"opencensus.k8s-integration.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
 				},
 				Cores:  Int32Pointer(1),
 				Labels: LabelsForSpark(),

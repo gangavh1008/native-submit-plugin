@@ -118,7 +118,7 @@ func TestBuildAltSubmissionCommandArgs(t *testing.T) {
 				{Name: "test", Path: "etc/ccp-secrets", Type: "HadoopDelegationToken"},
 			}
 
-			test.app.Spec.Executor.Image = common.StringPointer("871501607754.dkr.ecr.us-west-2.amazonaws.com/sfci/dva-transformation/spark-on-k8s-sample-apps/flowsnake-basic-operator-integration-spark-3.3.2:jenkins-dva-transformation-spark-on-k8s-sample-apps-spark-3.3.2-sfdc-3-itest")
+			test.app.Spec.Executor.Image = common.StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1")
 			test.app.Spec.Driver.EnvSecretKeyRefs = map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}}
 			test.app.Spec.Executor.EnvSecretKeyRefs = map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}}
 
