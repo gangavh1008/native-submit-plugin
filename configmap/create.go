@@ -86,7 +86,7 @@ func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName 
 	// Operator triggered spark-submit should never wait for App completion
 	args = args + fmt.Sprintf("%s=false", SparkWaitAppCompletion) + NewLineString
 
-	args = populateSparkConfProperties(args, *app, sparkConfKeyValuePairs)
+	args = populateSparkConfProperties(args, sparkConfKeyValuePairs)
 
 	// Add Hadoop configuration properties.
 	for key, value := range app.Spec.HadoopConf {
@@ -240,7 +240,7 @@ func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName 
 
 	args = args + fmt.Sprintf("%s=%s", SparkUIProxyRedirectURI, ForwardSlash) + NewLineString
 
-	args = populateProperties(args, *app)
+	args = populateProperties(args)
 
 	args = populateMonitoringInfo(args, *app)
 
@@ -277,7 +277,7 @@ func populateDriverAnnotations(args string, app v1beta2.SparkApplication) string
 	}
 	return args
 }
-func populateSparkConfProperties(args string, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) string {
+func populateSparkConfProperties(args string, sparkConfKeyValuePairs map[string]string) string {
 	// Priority wise: Spark Application Specification value, if not, then value in sparkConf, if not, then, defaults that get applied by Spark Environment of Driver pod
 	// Add Spark configuration properties.
 	for key, value := range sparkConfKeyValuePairs {
@@ -377,13 +377,13 @@ func populateAppSpecType(args string, app v1beta2.SparkApplication) string {
 	args = args + fmt.Sprintf("%s=%s", SparkApplicationType, appSpecType) + NewLineString
 	return args
 }
-func populateProperties(args string, app v1beta2.SparkApplication) string {
+func populateProperties(args string) string {
 	sparkDefaultConfFilePath := SparkDefaultsConfigFilePath + DefaultSparkConfFileName
 	propertyPairs, propertyFileReadError := properties.LoadFile(sparkDefaultConfFilePath, properties.UTF8)
 	if propertyFileReadError == nil {
 		keysList := propertyPairs.Keys()
 		for _, key := range keysList {
-			value, _ := propertyPairs.Get(key)
+			value := propertyPairs.GetString(key, "")
 			args = args + fmt.Sprintf("%s=%s", key, value) + NewLineString
 		}
 	}
@@ -403,27 +403,27 @@ func populateMonitoringInfo(args string, app v1beta2.SparkApplication) string {
 	return args
 }
 func populateArtifacts(args string, app v1beta2.SparkApplication) string {
-	if app.Spec.Deps.Jars != nil && len(app.Spec.Deps.Jars) > 0 {
-		modifiedJarList := make([]string, len(app.Spec.Deps.Jars))
+	if len(app.Spec.Deps.Jars) > 0 {
+		modifiedJarList := make([]string, 0)
 		for _, sparkjar := range app.Spec.Deps.Jars {
 			sparkjar = AddEscapeCharacter(sparkjar)
 			modifiedJarList = append(modifiedJarList, sparkjar)
 		}
 		args = args + SparkJars + EqualsSign + strings.Join(modifiedJarList, CommaSeparator) + NewLineString
 	}
-	if app.Spec.Deps.Files != nil && len(app.Spec.Deps.Files) > 0 {
+	if len(app.Spec.Deps.Files) > 0 {
 		args = args + SparkFiles + EqualsSign + strings.Join(app.Spec.Deps.Files, CommaSeparator) + NewLineString
 	}
-	if app.Spec.Deps.PyFiles != nil && len(app.Spec.Deps.PyFiles) > 0 {
+	if len(app.Spec.Deps.PyFiles) > 0 {
 		args = args + SparkPyFiles + EqualsSign + strings.Join(app.Spec.Deps.PyFiles, CommaSeparator) + NewLineString
 	}
-	if app.Spec.Deps.Packages != nil && len(app.Spec.Deps.Packages) > 0 {
+	if len(app.Spec.Deps.Packages) > 0 {
 		args = args + SparkPackages + EqualsSign + strings.Join(app.Spec.Deps.Packages, CommaSeparator) + NewLineString
 	}
-	if app.Spec.Deps.ExcludePackages != nil && len(app.Spec.Deps.ExcludePackages) > 0 {
+	if len(app.Spec.Deps.ExcludePackages) > 0 {
 		args = args + SparkExcludePackages + EqualsSign + strings.Join(app.Spec.Deps.ExcludePackages, CommaSeparator) + NewLineString
 	}
-	if app.Spec.Deps.Repositories != nil && len(app.Spec.Deps.Repositories) > 0 {
+	if len(app.Spec.Deps.Repositories) > 0 {
 		args = args + SparkRepositories + EqualsSign + strings.Join(app.Spec.Deps.Repositories, CommaSeparator) + NewLineString
 	}
 	return args
@@ -475,21 +475,19 @@ func populateComputeInfo(args string, app v1beta2.SparkApplication, sparkConfKey
 	return args, nil
 }
 func populateMemoryInfo(args string, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) string {
-
 	if app.Spec.Driver.Memory != nil {
 		args = args + fmt.Sprintf("spark.driver.memory=%s", *app.Spec.Driver.Memory) + NewLineString
 	} else { //Driver default memory
 		args = args + fmt.Sprintf("spark.driver.memory=%s", DriverDefaultMemory) + NewLineString
-
 	}
 
 	if app.Spec.Driver.MemoryOverhead != nil {
 		args = args + fmt.Sprintf("spark.driver.memoryOverhead=%v", *app.Spec.Driver.MemoryOverhead) + NewLineString
 	} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.driver.memoryOverhead") {
-		memoryOverhead, _ := app.Spec.SparkConf["spark.driver.memoryOverhead"]
+		memoryOverhead := app.Spec.SparkConf["spark.driver.memoryOverhead"]
 		args = args + fmt.Sprintf("spark.driver.memoryOverhead=%v", memoryOverhead) + NewLineString
 	} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.kubernetes.memoryOverhead") {
-		memoryOverhead, _ := app.Spec.SparkConf["spark.kubernetes.memoryOverhead"]
+		memoryOverhead := app.Spec.SparkConf["spark.kubernetes.memoryOverhead"]
 		args = args + fmt.Sprintf("spark.driver.memoryOverhead=%v", memoryOverhead) + NewLineString
 	}
 

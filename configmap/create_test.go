@@ -135,7 +135,7 @@ func TestBuildAltSubmissionCommandArgs(t *testing.T) {
 			test.app.Spec.SparkConf["spark.executor.limit.cores"] = "1200"
 			test.app.Spec.Executor.MemoryOverhead = common.StringPointer("0.2")
 			test.app.Spec.Type = v1beta2.SparkApplicationTypePython
-			test.app.Spec.Executor.ServiceAccount = common.StringPointer("fit-driver-serviceaccount")
+			test.app.Spec.Executor.ServiceAccount = common.StringPointer("driver-serviceaccount")
 			test.app.Spec.Executor.DeleteOnTermination = common.BoolPointer(true)
 		}
 		if index == 3 {

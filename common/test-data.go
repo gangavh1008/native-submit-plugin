@@ -76,7 +76,7 @@ var TestApp = &v1beta2.SparkApplication{
 				EnvSecretKeyRefs: map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}},
 				Memory:           StringPointer("512m"),
 				Labels:           LabelsForSpark(),
-				ServiceAccount:   StringPointer("fit-driver-serviceaccount"),
+				ServiceAccount:   StringPointer("driver-serviceaccount"),
 
 				Annotations: map[string]string{
 					"opencensus.k8s-integration.com/inject":             "enabled",

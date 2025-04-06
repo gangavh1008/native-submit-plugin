@@ -82,7 +82,7 @@ func TestCreateSparkAppDriverPod(t *testing.T) {
 			test.app.Spec.ImagePullSecrets = nil
 			test.app.Spec.SparkConf["spark.kubernetes.container.image.pullSecrets"] = "dummy-data"
 			test.app.Spec.Driver.ServiceAccount = nil
-			test.app.Spec.SparkConf["spark.kubernetes.authenticate.driver.serviceAccountName"] = "fit-driver-account"
+			test.app.Spec.SparkConf["spark.kubernetes.authenticate.driver.serviceAccountName"] = "driver-account"
 			test.app.Spec.SparkConf["spark.kubernetes.driver.scheduler.name"] = "dummy-scheduler"
 			test.app.Spec.Driver.TerminationGracePeriodSeconds = common.Int64Pointer(1)
 			test.app.Spec.Driver.Tolerations = []v1.Toleration{{Key: "example-key", Operator: "Exists", Effect: "NoSchedule"}}
