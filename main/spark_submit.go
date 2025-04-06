@@ -56,7 +56,6 @@ func runAltSparkSubmitWrapper(app *v1beta2.SparkApplication, cl ctrlClient.Clien
 }
 
 func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeClient ctrlClient.Client) (bool, error) {
-
 	appSpecVolumeMounts := app.Spec.Driver.VolumeMounts
 	appSpecVolumes := app.Spec.Volumes
 
@@ -64,15 +63,15 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 	uuidString := strings.ReplaceAll(uuid.New().String(), "-", "")
 	createdApplicationId := fmt.Sprintf("%s-%s", Spark, uuidString)
 
-	//Updte Application CRD Instnce with Spark Application ID
+	//Update Application CRD Instance with Spark Application ID
 	app.Status.SparkApplicationID = createdApplicationId
 
 	//Create Spark Application ConfigMap Name with the convention followed in Scala/Java
-	driverConfigMapName := common.GetDriverPodName(app) + ConfigMapExtension
+	driverConfigMapName := fmt.Sprintf("%s%s", common.GetDriverPodName(app), ConfigMapExtension)
 
 	serviceName := getServiceName(app)
 
-	//Updte Application CRD Instnce with Submission ID
+	//Update Application CRD Instance with Submission ID
 	app.Status.SubmissionID = submissionID
 
 	//Create Service Labels by aggregating Spark Application Specification level, driver specification level and dynamic lables
@@ -86,9 +85,8 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 	}
 
 	if app.Spec.Driver.Labels != nil {
-		_, versionLabelExists := app.Spec.Driver.Labels[Version]
-		if versionLabelExists {
-			serviceLabels[Version] = app.Spec.Driver.Labels[Version]
+		if version, exists := app.Spec.Driver.Labels[Version]; exists {
+			serviceLabels[Version] = version
 		}
 		for key, val := range app.Spec.Driver.Labels {
 			serviceLabels[key] = val
@@ -100,44 +98,52 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeC
 			serviceLabels[key] = val
 		}
 	}
+
 	// labels passed in sparkConf
 	sparkConfKeyValuePairs := app.Spec.SparkConf
 	for sparkConfKey, sparkConfValue := range sparkConfKeyValuePairs {
 		if strings.Contains(sparkConfKey, "spark.kubernetes.driver.label.") {
 			lastDotIndex := strings.LastIndex(sparkConfKey, DotSeparator)
 			labelKey := sparkConfKey[lastDotIndex+1:]
-			labelValue := sparkConfValue
-			serviceLabels[labelKey] = labelValue
+			serviceLabels[labelKey] = sparkConfValue
 		}
 	}
 
 	//Spark Application ConfigMap Creation
 	createErr := configmap.Create(app, submissionID, createdApplicationId, kubeClient, driverConfigMapName, serviceName)
 	if createErr != nil {
-		return false, fmt.Errorf("error while creating config map: %w", createErr)
+		return false, fmt.Errorf("error while creating configmap %s in namespace %s: %w", driverConfigMapName, app.Namespace, createErr)
 	}
 
 	//Spark Application Driver Pod Creation
 	createPodErr := driver.Create(app, serviceLabels, driverConfigMapName, kubeClient, appSpecVolumeMounts, appSpecVolumes)
 	if createPodErr != nil {
-		return false, fmt.Errorf("error while creating driver pod: %w", createPodErr)
+		return false, fmt.Errorf("error while creating driver pod %s in namespace %s: %w", common.GetDriverPodName(app), app.Namespace, createPodErr)
 	}
+
 	//Spark Application Driver Pod's Service Creation
 	createServiceErr := service.Create(app, serviceLabels, kubeClient, createdApplicationId, serviceName)
 	if createServiceErr != nil {
-		return false, fmt.Errorf("error while creating driver service: %w", createServiceErr)
+		return false, fmt.Errorf("error while creating driver service %s in namespace %s: %w", serviceName, app.Namespace, createServiceErr)
 	}
 	return true, nil
 }
 
 // getServiceName Helper function to get Spark Application Driver Pod's Service Name
 func getServiceName(app *v1beta2.SparkApplication) string {
-	driverPodServiceName := fmt.Sprintf("%s%s", common.GetDriverPodName(app), ServiceNameExtension)
-	if !(len(driverPodServiceName) <= KubernetesDNSLabelNameMaxLength) {
-		timeInString := strconv.Itoa(int(time.Now().Unix()))
+	var sb strings.Builder
+	sb.WriteString(common.GetDriverPodName(app))
+	sb.WriteString(ServiceNameExtension)
+	driverPodServiceName := sb.String()
+
+	if len(driverPodServiceName) > KubernetesDNSLabelNameMaxLength {
+		sb.Reset()
+		sb.WriteString(SparkWithDash)
+		sb.WriteString(strconv.Itoa(int(time.Now().Unix())))
 		randomHexString, _ := randomHex(10)
-		randomServiceId := randomHexString + timeInString
-		driverPodServiceName = SparkWithDash + randomServiceId + SparkAppDriverServiceNameExtension
+		sb.WriteString(randomHexString)
+		sb.WriteString(SparkAppDriverServiceNameExtension)
+		driverPodServiceName = sb.String()
 	}
 	return driverPodServiceName
 }
