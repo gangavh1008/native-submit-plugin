@@ -18,6 +18,10 @@ import (
 // Spark Application ConfigMap is pre-requisite for Driver Pod Creation; this configmap is mounted on driver pod
 // Spark Application ConfigMap acts as configuration repository for the Driver, executor pods
 func Create(app *v1beta2.SparkApplication, submissionID string, createdApplicationId string, kubeClient ctrlClient.Client, driverConfigMapName string, serviceName string) error {
+	if app == nil {
+		return fmt.Errorf("spark application cannot be nil")
+	}
+
 	var errorSubmissionCommandArgs error
 
 	//ConfigMap is created with Key, Value Pairs
@@ -126,10 +130,11 @@ func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName 
 		sb.WriteString(NewLineString)
 	}
 
-	sb, err = populateComputeInfo(sb, *app, sparkConfKeyValuePairs)
+	sbPtr, err := populateComputeInfo(&sb, *app, sparkConfKeyValuePairs)
 	if err != nil {
 		return "driver cores should be an integer", err
 	}
+	sb = *sbPtr
 
 	sb.WriteString(populateMemoryInfo(sb.String(), *app, sparkConfKeyValuePairs))
 
@@ -488,9 +493,10 @@ func populateContainerImageDetails(args string, app v1beta2.SparkApplication) st
 	}
 	return args
 }
-func populateComputeInfo(sb strings.Builder, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) (strings.Builder, error) {
+func populateComputeInfo(sb *strings.Builder, app v1beta2.SparkApplication, sparkConfKeyValuePairs map[string]string) (*strings.Builder, error) {
 	if app.Spec.Driver.Cores != nil {
-		sb.WriteString(fmt.Sprintf("%s=%d", SparkDriverCores, *app.Spec.Driver.Cores))
+		driverCores := *app.Spec.Driver.Cores
+		sb.WriteString(fmt.Sprintf("%s=%d", SparkDriverCores, driverCores))
 		sb.WriteString(NewLineString)
 	} else if common.CheckSparkConf(sparkConfKeyValuePairs, SparkDriverCores) {
 		driverCores, err := strconv.ParseInt(sparkConfKeyValuePairs[SparkDriverCores], 10, 32)

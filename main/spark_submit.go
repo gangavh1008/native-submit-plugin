@@ -56,6 +56,10 @@ func runAltSparkSubmitWrapper(app *v1beta2.SparkApplication, cl ctrlClient.Clien
 }
 
 func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeClient ctrlClient.Client) (bool, error) {
+	if app == nil {
+		return false, fmt.Errorf("spark application cannot be nil")
+	}
+
 	appSpecVolumeMounts := app.Spec.Driver.VolumeMounts
 	appSpecVolumes := app.Spec.Volumes
 

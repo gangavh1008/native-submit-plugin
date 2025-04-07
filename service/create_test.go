@@ -1,84 +1,185 @@
 package service
 
 import (
-	"context"
 	"nativesubmit/common"
-	"nativesubmit/configmap"
-	"nativesubmit/driver"
-
-	"github.com/kubeflow/spark-operator/api/v1beta2"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-
-	//"k8s.io/client-go/kubernetes/fake"
 	"testing"
 
+	v1beta2 "github.com/kubeflow/spark-operator/api/v1beta2"
+	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestCreateDriverService(t *testing.T) {
-	type testcase struct {
-		app                  *v1beta2.SparkApplication
-		driverConfigMapName  string
-		serviceLabels        map[string]string
-		submissionID         string
-		createdApplicationId string
-	}
-
-	// Create a fake client
+func TestCreate(t *testing.T) {
 	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
+	_ = v1beta2.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
 
-	serviceLabels := map[string]string{SparkAppNameLabel: "test-app"}
-	testFn := func(test testcase, t *testing.T) {
-		// Clean up any existing ConfigMap before the test
-		configMap := &corev1.ConfigMap{}
-		configMap.Name = test.driverConfigMapName
-		configMap.Namespace = "default"
-		_ = fakeClient.Delete(context.TODO(), configMap)
-
-		errCreateSparkAppConfigMap := configmap.Create(test.app, test.submissionID, test.createdApplicationId, fakeClient, test.driverConfigMapName, "testservicename")
-		if errCreateSparkAppConfigMap != nil {
-			t.Errorf("failed to create configmap: %v", errCreateSparkAppConfigMap)
-		}
-
-		errCreateDriverPod := driver.Create(test.app, serviceLabels, test.driverConfigMapName, fakeClient, test.app.Spec.Driver.VolumeMounts, test.app.Spec.Volumes)
-		if errCreateDriverPod != nil {
-			t.Errorf("failed to create Driver pod: %v", errCreateDriverPod)
-		}
-		err := Create(test.app, serviceLabels, fakeClient, "abcdefg123231kkllkjjlkl", "testservicename")
-		if err != nil {
-			t.Errorf("failed to create driver service: %v", err)
-		}
-	}
-
-	common.TestApp.Spec.SparkConf["spark.kubernetes.driver.service.label.test"] = "test-label"
-	common.TestApp.Spec.SparkConf["spark.kubernetes.driver.service.label.testa"] = "test-label-a"
-	testcases := []testcase{
+	tests := []struct {
+		name                  string
+		app                   *v1beta2.SparkApplication
+		serviceSelectorLabels map[string]string
+		createdApplicationId  string
+		serviceName           string
+		wantErr               bool
+	}{
 		{
-			app:                  common.TestApp,
-			driverConfigMapName:  "test-app-driver-configmap",
-			serviceLabels:        map[string]string{SparkAppNameLabel: "test-app"},
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			name: "valid application with default values",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{
+					Type: v1beta2.SparkApplicationTypeScala,
+					Mode: v1beta2.DeployModeCluster,
+					Driver: v1beta2.DriverSpec{
+						SparkPodSpec: v1beta2.SparkPodSpec{
+							Cores: int32ptr(1),
+						},
+					},
+				},
+			},
+			serviceSelectorLabels: map[string]string{
+				"spark-role": "driver",
+			},
+			createdApplicationId: "test-app-id",
+			serviceName:          "test-service",
+			wantErr:              false,
+		},
+		{
+			name: "valid application with custom ports",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{
+					Type: v1beta2.SparkApplicationTypeScala,
+					Mode: v1beta2.DeployModeCluster,
+					Driver: v1beta2.DriverSpec{
+						SparkPodSpec: v1beta2.SparkPodSpec{
+							Cores: int32ptr(1),
+						},
+					},
+					SparkConf: map[string]string{
+						"spark.driver.port":              "7079",
+						"spark.driver.blockManager.port": "7078",
+					},
+				},
+			},
+			serviceSelectorLabels: map[string]string{
+				"spark-role": "driver",
+			},
+			createdApplicationId: "test-app-id",
+			serviceName:          "test-service",
+			wantErr:              false,
+		},
+		{
+			name: "nil application",
+			app:  nil,
+			serviceSelectorLabels: map[string]string{
+				"spark-role": "driver",
+			},
+			createdApplicationId: "test-app-id",
+			serviceName:          "test-service",
+			wantErr:              true,
 		},
 	}
-	testcases = append(testcases, testcases[0], testcases[0])
 
-	for index, test := range testcases {
-		if index == 0 {
-			test.app.Spec.SparkConf["spark.kubernetes.driver.service.ipFamilies"] = "IPv4"
-		} else if index == 1 {
-			test.app.Spec.SparkConf["spark.driver.port"] = "7080"
-			test.app.Spec.SparkConf["spark.blockManager.port"] = "8080"
-		} else if index == 2 {
-			test.app.Spec.SparkConf["spark.driver.port"] = "7080"
-			test.app.Spec.SparkConf["spark.driver.blockManager.port"] = "8080"
-		}
-		testFn(test, t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(scheme).Build()
+			err := Create(tt.app, tt.serviceSelectorLabels, client, tt.createdApplicationId, tt.serviceName)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
+}
+
+func TestGetDriverPodBlockManagerPort(t *testing.T) {
+	tests := []struct {
+		name string
+		app  *v1beta2.SparkApplication
+		want int32
+	}{
+		{
+			name: "default port",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{},
+			},
+			want: common.DefaultBlockManagerPort,
+		},
+		{
+			name: "custom port",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{
+					SparkConf: map[string]string{
+						"spark.driver.blockManager.port": "7078",
+					},
+				},
+			},
+			want: 7078,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getDriverPodBlockManagerPort(tt.app)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGetDriverNBlockManagerPort(t *testing.T) {
+	tests := []struct {
+		name        string
+		app         *v1beta2.SparkApplication
+		portConfig  string
+		defaultPort int32
+		want        int32
+	}{
+		{
+			name: "default port",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{},
+			},
+			portConfig:  "spark.driver.port",
+			defaultPort: 7077,
+			want:        7077,
+		},
+		{
+			name: "custom port",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{
+					SparkConf: map[string]string{
+						"spark.driver.port": "7079",
+					},
+				},
+			},
+			portConfig:  "spark.driver.port",
+			defaultPort: 7077,
+			want:        7079,
+		},
+		{
+			name: "invalid port",
+			app: &v1beta2.SparkApplication{
+				Spec: v1beta2.SparkApplicationSpec{
+					SparkConf: map[string]string{
+						"spark.driver.port": "invalid",
+					},
+				},
+			},
+			portConfig:  "spark.driver.port",
+			defaultPort: 7077,
+			want:        7077,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getDriverNBlockManagerPort(tt.app, tt.portConfig, tt.defaultPort)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func int32ptr(i int32) *int32 {
+	return &i
 }

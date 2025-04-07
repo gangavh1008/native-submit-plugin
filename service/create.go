@@ -20,6 +20,9 @@ import (
 
 // Helper func to create Service for the Driver Pod of the Spark Application
 func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient ctrlClient.Client, createdApplicationId string, serviceName string) error {
+	if app == nil {
+		return fmt.Errorf("spark application cannot be nil")
+	}
 
 	//Service Schema populating with specific values/data
 	var serviceObjectMetaData metav1.ObjectMeta
@@ -172,7 +175,8 @@ func getDriverNBlockManagerPort(app *v1beta2.SparkApplication, portConfig string
 		value, _ := app.Spec.SparkConf[portConfig]
 		portVal, parseError := strconv.ParseInt(value, 10, 64)
 		if parseError != nil {
-			fmt.Errorf("failed to parse %s in namespace %s: %v", portConfig, app.Namespace, parseError)
+			glog.Errorf("failed to parse %s in namespace %s: %v", portConfig, app.Namespace, parseError)
+			return defaultPort
 		}
 		return int32(portVal)
 	}
