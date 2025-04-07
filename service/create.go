@@ -18,25 +18,6 @@ import (
 	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	// SparkApplicationSelectorLabel is the AppID set by the spark-distribution on the driver/executors Pods.
-	SparkApplicationSelectorLabel  = "spark-app-selector"
-	DotSeparator                   = "."
-	None                           = "None"
-	DriverPortName                 = "driver-rpc-port"
-	BlockManagerPortName           = "blockmanager"
-	Protocol                       = "TCP"
-	UiPortName                     = "spark-ui"
-	UiPort                         = 4040
-	DriverPortProperty             = "spark.driver.port"
-	ClusterIP                      = "ClusterIP"
-	DriverBlockManagerPortProperty = "spark.driver.blockManager.port"
-	// SparkAppNameLabel is the name of the label for the SparkApplication object name.
-	SparkAppNameLabel = LabelAnnotationPrefix + "app-name"
-	// LabelAnnotationPrefix is the prefix of every labels and annotations added by the controller.
-	LabelAnnotationPrefix = "sparkoperator.k8s.io/"
-)
-
 // Helper func to create Service for the Driver Pod of the Spark Application
 func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient ctrlClient.Client, createdApplicationId string, serviceName string) error {
 

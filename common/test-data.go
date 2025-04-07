@@ -62,7 +62,7 @@ func BaseTestApp() *v1beta2.SparkApplication {
 					ConfigMaps: []v1beta2.NamePath{
 						{
 							Name: "test-configmap",
-							Path: "/etc/ccp/lldc/rsyslog",
+							Path: "/rsyslog",
 						},
 					},
 					CoreLimit: StringPointer("1200m"),
@@ -106,7 +106,7 @@ func BaseTestApp() *v1beta2.SparkApplication {
 								"/usr/sbin/rsyslogd",
 								"-n",
 								"-f",
-								"/etc/ccp/lldc/rsyslog/rsyslog.conf",
+								"/rsyslog.conf",
 							},
 							Env: []corev1.EnvVar{
 								{
@@ -128,12 +128,12 @@ func BaseTestApp() *v1beta2.SparkApplication {
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									MountPath: "/etc/ccp/lldc/applogs",
-									Name:      "ccp-lldc-applogs",
+									MountPath: "/applogs",
+									Name:      "applogs",
 								},
 								{
-									MountPath: "/etc/ccp/lldc/statedir",
-									Name:      "ccp-lldc-statedir",
+									MountPath: "/statedir",
+									Name:      "statedir",
 								},
 							},
 						},
@@ -142,12 +142,12 @@ func BaseTestApp() *v1beta2.SparkApplication {
 					VolumeMounts: []corev1.VolumeMount{
 
 						{
-							MountPath: "/etc/ccp/lldc/applogs",
-							Name:      "ccp-lldc-applogs",
+							MountPath: "/applogs",
+							Name:      "applogs",
 						},
 						{
-							MountPath: "/etc/ccp/lldc/statedir",
-							Name:      "ccp-lldc-statedir",
+							MountPath: "/statedir",
+							Name:      "statedir",
 						},
 						{
 							MountPath: "/etc/test1",
@@ -181,11 +181,11 @@ func BaseTestApp() *v1beta2.SparkApplication {
 					Secrets: []v1beta2.SecretInfo{{Name: "test", Path: "\\spark\\bin", Type: "GCPServiceAccount"}, {Name: "test", Path: "\\spark\\bin", Type: "HadoopDelegationToken"}},
 					VolumeMounts: []corev1.VolumeMount{
 						{
-							MountPath: "/etc/ccp/lldc/applogs",
+							MountPath: "/applogs",
 							Name:      "ccp-lldc-applogs",
 						},
 						{
-							MountPath: "/etc/ccp/lldc/statedir",
+							MountPath: "/statedir",
 							Name:      "ccp-lldc-statedir",
 						},
 						{

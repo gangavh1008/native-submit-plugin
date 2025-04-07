@@ -40,8 +40,6 @@ func Create(app *v1beta2.SparkApplication, submissionID string, createdApplicati
 	return nil
 }
 
-// CreateConfigMapUtil Helper func to create Spark Application configmap
-
 // Helper func to create key/value pairs required for the Spark Application Configmap
 // Majority of the code borrowed from Scala implementation
 func buildAltSubmissionCommandArgs(app *v1beta2.SparkApplication, driverPodName string, submissionID string, createdApplicationId string, serviceName string) (string, error) {

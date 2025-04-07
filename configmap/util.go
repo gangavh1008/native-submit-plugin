@@ -20,6 +20,7 @@ const (
 	kubernetesServicePortEnvVar = "KUBERNETES_SERVICE_PORT"
 )
 
+// CreateConfigMapUtil Helper func to create Spark Application configmap
 func createConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, configMapData map[string]string, kubeClient ctrlClient.Client) error {
 	configMap := &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -106,9 +107,7 @@ func filterMutateMountVolumes(volumeMounts []apiv1.VolumeMount, prefix string, s
 	for _, volumeMount := range volumeMounts {
 		if volume, ok := sparkLocalVolumes[volumeMount.Name]; ok {
 			options := buildLocalVolumeOptions(prefix, volume, volumeMount)
-			for _, option := range options {
-				localDirConfOptions = append(localDirConfOptions, option)
-			}
+			localDirConfOptions = append(localDirConfOptions, options...)
 		} else {
 			mutateMountVolumes = append(mutateMountVolumes, volumeMount)
 		}

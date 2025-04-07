@@ -123,10 +123,16 @@ func loadPodFromTemplate(templateFileName string, containerName string, conf map
 		fmt.Errorf("Encountered exception while attempting to download the pod template file : %v", err)
 		return file, err
 	} else {
-		data, _ := os.ReadFile(localFile)
+		data, err := os.ReadFile(localFile)
+		if err != nil {
+			return file, err
+		}
 		manifests := string(data)
 		decode := scheme.Codecs.UniversalDeserializer().Decode
-		obj, _, _ := decode([]byte(manifests), nil, nil)
+		obj, _, err := decode([]byte(manifests), nil, nil)
+		if err != nil {
+			return file, err
+		}
 		pod := obj.(*apiv1.Pod)
 		newPod := selectSparkContainer(*pod, containerName)
 		return newPod, nil

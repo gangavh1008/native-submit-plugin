@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"nativesubmit/common"
 	"nativesubmit/configmap"
 	"nativesubmit/driver"
@@ -24,14 +25,22 @@ func TestCreateDriverService(t *testing.T) {
 		submissionID         string
 		createdApplicationId string
 	}
-	//fakeClient := fake.NewSimpleClientset()
+
+	// Create a fake client
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		Build()
+
 	serviceLabels := map[string]string{SparkAppNameLabel: "test-app"}
 	testFn := func(test testcase, t *testing.T) {
+		// Clean up any existing ConfigMap before the test
+		configMap := &corev1.ConfigMap{}
+		configMap.Name = test.driverConfigMapName
+		configMap.Namespace = "default"
+		_ = fakeClient.Delete(context.TODO(), configMap)
+
 		errCreateSparkAppConfigMap := configmap.Create(test.app, test.submissionID, test.createdApplicationId, fakeClient, test.driverConfigMapName, "testservicename")
 		if errCreateSparkAppConfigMap != nil {
 			t.Errorf("failed to create configmap: %v", errCreateSparkAppConfigMap)

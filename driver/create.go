@@ -18,74 +18,6 @@ import (
 	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	SparkDriverCores          = "spark.driver.cores"
-	SparkDriverMemory         = "spark.driver.memory"
-	ForwardSlash              = "/"
-	KerberosPath              = "spark.kubernetes.kerberos.krb5.path"
-	KerberosConfigMapName     = "spark.kubernetes.kerberos.krb5.configMapName"
-	KerberosFileVolume        = "krb5-file"
-	KerberosFileDirectoryPath = "/etc"
-	KerberosFileName          = "krb5.conf"
-
-	SparkDriverEnvPrefix             = "spark.kubernetes.driverEnv"
-	All                              = "ALL"
-	SparkUserId                      = "185"
-	SparkBlockManagerPort            = "spark.blockManager.port"
-	SparkDriverBlockManagerPort      = "spark.driver.blockManager.port"
-	DotSeparator                     = "."
-	SparkDriverDNSPolicy             = "ClusterFirst"
-	SparkNodeSelectorPrefix          = "spark.kubernetes.node.selector."
-	SparkDriverPodNodeSelectorPrefix = "spark.kubernetes.driver.node.selector."
-	DriverPodRestartPolicyNever      = "Never"
-	// LabelAnnotationPrefix is the prefix of every labels and annotations added by the controller.
-	LabelAnnotationPrefix = "sparkoperator.k8s.io/"
-	// SparkAppNameLabel is the name of the label for the SparkApplication object name.
-	SparkAppNameLabel                    = LabelAnnotationPrefix + "app-name"
-	DriverPodSecurityContextID           = 185
-	DefaultTerminationGracePeriodSeconds = 30
-	TolerationEffect                     = "NoExecute"
-	NodeNotReady                         = "node.kubernetes.io/not-ready"
-	NodeNotReachable                     = "node.kubernetes.io/unreachable"
-	Operator                             = "Exists"
-	DefaultTolerationSeconds             = 300
-	SparkConfVolumeDriver                = "spark-conf-volume-driver"
-	SparkConfVolumeDriverMountPath       = "/opt/spark/conf"
-	SparkEnvScriptFileName               = "spark-env.sh"
-	SparkPropertiesFileName              = "spark.properties"
-	LocalStoragePrefix                   = "spark-local-dir-"
-	SparkLocalDirPath                    = "/var/data/spark-"
-	SparkLocalDirectoryName              = "spark-local-dir-"
-	SparkLocalDir                        = "SPARK_LOCAL_DIRS"
-	SparkDriverArg                       = "driver"
-	SparkDriverArgPropertiesFile         = "--properties-file"
-	SparkDriverArgClass                  = "--class"
-	SparkDriverArgPropertyFilePath       = "/opt/spark/conf/spark.properties"
-	SparkDefaultsConfigFilePath          = "/opt/spark/conf/"
-	SparkUser                            = "SPARK_USER"
-	SparkApplicationID                   = "SPARK_APPLICATION_ID"
-	SparkDriverBindAddress               = "SPARK_DRIVER_BIND_ADDRESS"
-	ApiVersionV1                         = "v1"
-	SparkDriverPodIP                     = "status.podIP"
-	KerberosTokenSecretItemKey           = "spark.kubernetes.kerberos.tokenSecret.itemKey"
-	KerberosHadoopSecretFilePathKey      = "HADOOP_TOKEN_FILE_LOCATION"
-	KerberosHadoopSecretFilePath         = "/mnt/secrets/hadoop-credentials/"
-	ImagePullPolicyIfNotPresent          = "IfNotPresent"
-	DriverPortName                       = "driver-rpc-port"
-	BlockManagerPortName                 = "blockmanager"
-	Protocol                             = "TCP"
-	UiPortName                           = "spark-ui"
-	UiPort                               = 4040
-	DriverPodTerminationLogPath          = "/dev/termination-log"
-	DriverPodTerminationMessagePolicy    = "File"
-	OAuthTokenConfFile                   = "spark.kubernetes.authenticate.driver.oauthTokenFile"
-	ClientKeyFile                        = "spark.kubernetes.authenticate.driver.clientKeyFile"
-	ClientCertFile                       = "spark.kubernetes.authenticate.driver.clientCertFile"
-	CaCertFile                           = "spark.kubernetes.authenticate.driver.caCertFile"
-	KubernetesCredentials                = "kubernetes-credentials"
-	KubernetesCredentialsVolumeMountPath = "/mnt/secrets/spark-kubernetes-credentials"
-)
-
 // Helper func to create Driver Pod of the Spark Application
 func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driverConfigMapName string, kubeClient ctrlClient.Client, appSpecVolumeMounts []apiv1.VolumeMount, appSpecVolumes []apiv1.Volume) error {
 	//Load template file, if one supplied
@@ -93,10 +25,10 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	var err error
 	driverPodtemplateFile, templateFileExists := app.Spec.SparkConf["spark.kubernetes.driver.podTemplateFile"]
 	if templateFileExists {
-		podTemplateDriverContainerName, _ := app.Spec.SparkConf["spark.kubernetes.driver.podTemplateContainerName"]
+		podTemplateDriverContainerName := app.Spec.SparkConf["spark.kubernetes.driver.podTemplateContainerName"]
 		initialPod, err = loadPodFromTemplate(driverPodtemplateFile, podTemplateDriverContainerName, app.Spec.SparkConf)
 		if err != nil {
-			fmt.Errorf("failed to load template file for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, err)
+			return fmt.Errorf("failed to load template file for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, err)
 
 		}
 	}
@@ -176,7 +108,7 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	if app.Spec.ImagePullSecrets != nil {
 		imagePullSecrets = app.Spec.ImagePullSecrets
 	} else if common.CheckSparkConf(app.Spec.SparkConf, common.SparkImagePullSecretKey) {
-		imagePullSecretList, _ := app.Spec.SparkConf[common.SparkImagePullSecretKey]
+		imagePullSecretList := app.Spec.SparkConf[common.SparkImagePullSecretKey]
 		imagePullSecrets = strings.Split(imagePullSecretList, ",")
 	}
 	var imagePullSecretsList []apiv1.LocalObjectReference
@@ -351,7 +283,7 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 		if updateErr != nil {
 			return fmt.Errorf("error while updating driver pod: %w", updateErr)
 		}
-		//_, updateErr := kubeClient.CoreV1().Pods(app.Namespace).Update(context.TODO(), driverPodExisting, metav1.UpdateOptions{})
+
 		return updateErr
 	})
 
@@ -427,19 +359,8 @@ func CreateDriverPodContainerSpec(app *v1beta2.SparkApplication) (apiv1.Containe
 	}
 
 	//Driver Container default arguments
-	driverPodContainerSpec.Args = []string{
-		SparkDriverArg,
-		SparkDriverArgPropertiesFile,
-		SparkDriverArgPropertyFilePath,
-		SparkDriverArgClass,
-		mainClass,
-		mainApplicationFile,
-	}
-	if args != nil {
-		for _, arg := range args {
-			driverPodContainerSpec.Args = append(driverPodContainerSpec.Args, arg)
-		}
-	}
+	driverPodContainerSpec.Args = append(driverPodContainerSpec.Args, SparkDriverArg, SparkDriverArgPropertiesFile, SparkDriverArgPropertyFilePath, SparkDriverArgClass, mainClass, mainApplicationFile)
+	driverPodContainerSpec.Args = append(driverPodContainerSpec.Args, args...)
 
 	var driverPodContainerEnvVars []apiv1.EnvVar
 
@@ -508,7 +429,7 @@ func CreateDriverPodContainerSpec(app *v1beta2.SparkApplication) (apiv1.Containe
 	if app.Spec.ImagePullPolicy != nil {
 		driverPodContainerSpec.ImagePullPolicy = apiv1.PullPolicy(*app.Spec.ImagePullPolicy)
 	} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.kubernetes.container.image.pullPolicy") {
-		pullPolicy, _ := app.Spec.SparkConf["spark.kubernetes.container.image.pullPolicy"]
+		pullPolicy := app.Spec.SparkConf["spark.kubernetes.container.image.pullPolicy"]
 		driverPodContainerSpec.ImagePullPolicy = apiv1.PullPolicy(pullPolicy)
 	} else {
 		//Default value
@@ -570,10 +491,10 @@ func CreateDriverPodContainerSpec(app *v1beta2.SparkApplication) (apiv1.Containe
 
 func checkMountingKubernetesCredentials(sparkConfKeyValuePairs map[string]string) bool {
 	if sparkConfKeyValuePairs != nil {
-		_, OAuthTokenConfFileExists := sparkConfKeyValuePairs[OAuthTokenConfFile]
-		_, ClientKeyFileExists := sparkConfKeyValuePairs[ClientKeyFile]
-		_, ClientCertFileExists := sparkConfKeyValuePairs[ClientCertFile]
-		_, CaCertFileExists := sparkConfKeyValuePairs[CaCertFile]
+		OAuthTokenConfFileExists := sparkConfKeyValuePairs[OAuthTokenConfFile] != ""
+		ClientKeyFileExists := sparkConfKeyValuePairs[ClientKeyFile] != ""
+		ClientCertFileExists := sparkConfKeyValuePairs[ClientCertFile] != ""
+		CaCertFileExists := sparkConfKeyValuePairs[CaCertFile] != ""
 		if OAuthTokenConfFileExists || ClientKeyFileExists || ClientCertFileExists || CaCertFileExists {
 			return true
 		}
@@ -589,9 +510,9 @@ func incorporateMemoryOvehead(memoryNumber int, app *v1beta2.SparkApplication, m
 		if app.Spec.Driver.MemoryOverhead != nil {
 			memoryOverhead = *app.Spec.Driver.MemoryOverhead
 		} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.driver.memoryOverhead") {
-			memoryOverhead, _ = app.Spec.SparkConf["spark.driver.memoryOverhead"]
+			memoryOverhead = app.Spec.SparkConf["spark.driver.memoryOverhead"]
 		} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.kubernetes.memoryOverhead") {
-			memoryOverhead, _ = app.Spec.SparkConf["spark.kubernetes.memoryOverhead"]
+			memoryOverhead = app.Spec.SparkConf["spark.kubernetes.memoryOverhead"]
 		}
 		//both memory and memoryOverhead are in same Memory Unit(MiB or GiB)
 		// Amount of memory to use for the driver process, i.e. where SparkContext is initialized, in the same format as JVM memory strings with a size unit suffix ("k", "m", "g" or "t") (e.g. 512m, 2g).
@@ -606,7 +527,7 @@ func incorporateMemoryOvehead(memoryNumber int, app *v1beta2.SparkApplication, m
 		if app.Spec.MemoryOverheadFactor != nil {
 			memoryOverheadFactor, _ = strconv.ParseFloat(*app.Spec.MemoryOverheadFactor, 64)
 		} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.driver.memoryOverheadFactor") {
-			memOverheadFactorString, _ := app.Spec.SparkConf["spark.driver.memoryOverheadFactor"]
+			memOverheadFactorString := app.Spec.SparkConf["spark.driver.memoryOverheadFactor"]
 			memoryOverheadFactor, _ = strconv.ParseFloat(memOverheadFactorString, 64)
 		} else {
 			memoryOverheadFactor, _ = strconv.ParseFloat(common.GetMemoryOverheadFactor(app), 64)
@@ -644,19 +565,17 @@ func processMemoryUnit(memoryData string) int {
 func processSparkConfEnv(app *v1beta2.SparkApplication, driverPodContainerEnvVars []apiv1.EnvVar) ([]string, []apiv1.EnvVar) {
 	var resolvedLocalDirs []string
 	sparkConfKeyValuePairs := app.Spec.SparkConf
-	if sparkConfKeyValuePairs != nil {
-		var driverPodContainerEnvConfigVars apiv1.EnvVar
-		for sparkConfKey, sparkConfValue := range sparkConfKeyValuePairs {
-			if strings.Contains(sparkConfKey, SparkDriverEnvPrefix) {
-				lastDotIndex := strings.LastIndex(sparkConfKey, DotSeparator)
-				driverPodContainerEnvConfigVarKey := sparkConfKey[lastDotIndex+1:]
-				if driverPodContainerEnvConfigVarKey == "SPARK_LOCAL_DIRS" {
-					resolvedLocalDirs = strings.Split(sparkConfValue, ",")
-				}
-				driverPodContainerEnvConfigVars.Name = driverPodContainerEnvConfigVarKey
-				driverPodContainerEnvConfigVars.Value = sparkConfValue
-				driverPodContainerEnvVars = append(driverPodContainerEnvVars, driverPodContainerEnvConfigVars)
+	var driverPodContainerEnvConfigVars apiv1.EnvVar
+	for sparkConfKey, sparkConfValue := range sparkConfKeyValuePairs {
+		if strings.Contains(sparkConfKey, SparkDriverEnvPrefix) {
+			lastDotIndex := strings.LastIndex(sparkConfKey, DotSeparator)
+			driverPodContainerEnvConfigVarKey := sparkConfKey[lastDotIndex+1:]
+			if driverPodContainerEnvConfigVarKey == "SPARK_LOCAL_DIRS" {
+				resolvedLocalDirs = strings.Split(sparkConfValue, ",")
 			}
+			driverPodContainerEnvConfigVars.Name = driverPodContainerEnvConfigVarKey
+			driverPodContainerEnvConfigVars.Value = sparkConfValue
+			driverPodContainerEnvVars = append(driverPodContainerEnvVars, driverPodContainerEnvConfigVars)
 		}
 	}
 
@@ -724,8 +643,7 @@ func handleResources(app *v1beta2.SparkApplication) apiv1.ResourceRequirements {
 		memoryQuantity = resource.MustParse(memoryInBytes)
 		memoryValExists = true
 	} else if common.CheckSparkConf(app.Spec.SparkConf, SparkDriverMemory) {
-		value, _ := app.Spec.SparkConf[SparkDriverMemory]
-		memoryQuantity = resource.MustParse(value)
+		memoryQuantity = resource.MustParse(app.Spec.SparkConf[SparkDriverMemory])
 		memoryValExists = true
 	} else { //setting default value
 		memoryQuantity = resource.MustParse("1")

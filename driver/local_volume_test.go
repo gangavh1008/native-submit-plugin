@@ -21,7 +21,7 @@ func TestHandleLocalDirsFeatureStep(t *testing.T) {
 		}
 
 	}
-	testcases := common.TestCasesList
+	testcases := common.TestCasesList()
 	for index, test := range testcases {
 		indexedProcessing(index, test)
 		testFn(test, t)

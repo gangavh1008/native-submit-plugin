@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"nativesubmit/common"
 	"nativesubmit/configmap"
 
@@ -115,6 +116,12 @@ func TestCreateSparkAppDriverPod(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup test case
 			tt.setupFunc(tt.app)
+
+			// Clean up any existing ConfigMap before the test
+			configMap := &v1.ConfigMap{}
+			configMap.Name = tt.driverConfigMapName
+			configMap.Namespace = "default"
+			_ = fakeClient.Delete(context.TODO(), configMap)
 
 			// Create configmap
 			err := configmap.Create(tt.app, tt.submissionID, tt.createdApplicationId, fakeClient, tt.driverConfigMapName, "test")

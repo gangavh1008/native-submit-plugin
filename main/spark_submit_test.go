@@ -15,6 +15,28 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+var getServiceNameFunctionTestData1 = &v1beta2.SparkApplication{
+	Spec: v1beta2.SparkApplicationSpec{
+		Type: v1beta2.SparkApplicationTypeScala,
+		Driver: v1beta2.DriverSpec{
+			PodName: StringPointer("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"),
+		},
+	},
+}
+
+func StringPointer(a string) *string {
+	return &a
+}
+
+var getServiceNameFunctionTestData2 = &v1beta2.SparkApplication{
+	Spec: v1beta2.SparkApplicationSpec{
+		Type: v1beta2.SparkApplicationTypeScala,
+		Driver: v1beta2.DriverSpec{
+			PodName: StringPointer("abcdefghijk"),
+		},
+	},
+}
+
 func TestRunAltSparkSubmit(t *testing.T) {
 	submissionID := uuid.New().String()
 	//fakeClient := fake.NewSimpleClientset()

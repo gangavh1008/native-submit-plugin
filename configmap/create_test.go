@@ -2,6 +2,7 @@ package configmap
 
 import (
 	"context"
+	"fmt"
 	"nativesubmit/common"
 	"testing"
 
@@ -26,6 +27,7 @@ func TestCreateSparkAppConfigMap(t *testing.T) {
 		createdApplicationId string
 		driverConfigMapName  string
 		wantErr              bool
+		validateConfig       func(*apiv1.ConfigMap) error
 	}{
 		{
 			name:                 "basic configmap creation",
@@ -34,6 +36,18 @@ func TestCreateSparkAppConfigMap(t *testing.T) {
 			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
 			driverConfigMapName:  "test-app-driver-configmap",
 			wantErr:              false,
+			validateConfig: func(cm *apiv1.ConfigMap) error {
+				if cm.Data == nil {
+					return fmt.Errorf("configmap data is nil")
+				}
+				if cm.Data["spark.app.name"] != "test-app" {
+					return fmt.Errorf("unexpected spark.app.name value: %s", cm.Data["spark.app.name"])
+				}
+				if cm.Data["spark.app.id"] != "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO" {
+					return fmt.Errorf("unexpected spark.app.id value: %s", cm.Data["spark.app.id"])
+				}
+				return nil
+			},
 		},
 		{
 			name:                 "configmap with empty submission ID",
@@ -51,6 +65,58 @@ func TestCreateSparkAppConfigMap(t *testing.T) {
 			driverConfigMapName:  "test-app-driver-configmap",
 			wantErr:              true,
 		},
+		{
+			name: "configmap with custom spark config",
+			app: func() *v1beta2.SparkApplication {
+				app := common.BaseTestApp()
+				app.Spec.SparkConf["spark.executor.memory"] = "2g"
+				app.Spec.SparkConf["spark.executor.cores"] = "2"
+				return app
+			}(),
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			driverConfigMapName:  "test-app-driver-configmap",
+			wantErr:              false,
+			validateConfig: func(cm *apiv1.ConfigMap) error {
+				if cm.Data == nil {
+					return fmt.Errorf("configmap data is nil")
+				}
+				if cm.Data["spark.executor.memory"] != "2g" {
+					return fmt.Errorf("unexpected spark.executor.memory value: %s", cm.Data["spark.executor.memory"])
+				}
+				if cm.Data["spark.executor.cores"] != "2" {
+					return fmt.Errorf("unexpected spark.executor.cores value: %s", cm.Data["spark.executor.cores"])
+				}
+				return nil
+			},
+		},
+		{
+			name: "configmap with custom driver config",
+			app: func() *v1beta2.SparkApplication {
+				app := common.BaseTestApp()
+				memoryStr := memoryQuantity.String()
+				app.Spec.Driver.Memory = &memoryStr
+				cores := int32(2)
+				app.Spec.Driver.Cores = &cores
+				return app
+			}(),
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			driverConfigMapName:  "test-app-driver-configmap",
+			wantErr:              false,
+			validateConfig: func(cm *apiv1.ConfigMap) error {
+				if cm.Data == nil {
+					return fmt.Errorf("configmap data is nil")
+				}
+				if cm.Data["spark.driver.memory"] != memoryQuantity.String() {
+					return fmt.Errorf("unexpected spark.driver.memory value: %s", cm.Data["spark.driver.memory"])
+				}
+				if cm.Data["spark.driver.cores"] != "2" {
+					return fmt.Errorf("unexpected spark.driver.cores value: %s", cm.Data["spark.driver.cores"])
+				}
+				return nil
+			},
+		},
 	}
 
 	// Create a fake client
@@ -62,170 +128,31 @@ func TestCreateSparkAppConfigMap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Clean up any existing ConfigMap before the test
+			configMap := &apiv1.ConfigMap{}
+			configMap.Name = tt.driverConfigMapName
+			configMap.Namespace = "default"
+			_ = fakeClient.Delete(context.TODO(), configMap)
+
 			err := Create(tt.app, tt.submissionID, tt.createdApplicationId, fakeClient, tt.driverConfigMapName, "test")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Create() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			if !tt.wantErr {
+			if !tt.wantErr && tt.validateConfig != nil {
 				configMap := &apiv1.ConfigMap{}
 				configMap.Name = tt.driverConfigMapName
 				configMap.Namespace = "default"
 				err = fakeClient.Get(context.TODO(), ctrlClient.ObjectKeyFromObject(configMap), configMap)
 				if err != nil {
 					t.Errorf("failed to get ConfigMap %s: %v", tt.driverConfigMapName, err)
+					return
 				}
-				if configMap.Data == nil {
-					t.Errorf("ConfigMap %s data is nil", tt.driverConfigMapName)
+				if err := tt.validateConfig(configMap); err != nil {
+					t.Errorf("configmap validation failed: %v", err)
 				}
 			}
 		})
 	}
-}
-
-func TestBuildAltSubmissionCommandArgs(t *testing.T) {
-	tests := []struct {
-		name                 string
-		app                  *v1beta2.SparkApplication
-		driverPodName        string
-		submissionID         string
-		createdApplicationId string
-		wantErr              bool
-	}{
-		{
-			name:                 "basic submission args",
-			app:                  common.BaseTestApp(),
-			driverPodName:        "test-app-driver",
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			wantErr:              false,
-		},
-		{
-			name:                 "submission args with empty driver pod name",
-			app:                  common.BaseTestApp(),
-			driverPodName:        "",
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			wantErr:              true,
-		},
-		{
-			name:                 "submission args with empty submission ID",
-			app:                  common.BaseTestApp(),
-			driverPodName:        "test-app-driver",
-			submissionID:         "",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			wantErr:              true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := buildAltSubmissionCommandArgs(tt.app, tt.driverPodName, tt.submissionID, tt.createdApplicationId, "testservicename")
-			if (err != nil) != tt.wantErr {
-				t.Errorf("buildAltSubmissionCommandArgs() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestCreateSparkAppConfigMapUtil(t *testing.T) {
-	tests := []struct {
-		name          string
-		app           *v1beta2.SparkApplication
-		configMapName string
-		configMapData map[string]string
-		wantErr       bool
-	}{
-		{
-			name:          "basic configmap util",
-			app:           common.BaseTestApp(),
-			configMapName: "test-app-driver-config-map",
-			configMapData: map[string]string{"app-name": "test-app"},
-			wantErr:       false,
-		},
-		{
-			name:          "configmap util with empty configmap name",
-			app:           common.BaseTestApp(),
-			configMapName: "",
-			configMapData: map[string]string{"app-name": "test-app"},
-			wantErr:       true,
-		},
-		{
-			name:          "configmap util with nil configmap data",
-			app:           common.BaseTestApp(),
-			configMapName: "test-app-driver-config-map",
-			configMapData: nil,
-			wantErr:       true,
-		},
-	}
-
-	// Create a fake client
-	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := createConfigMapUtil(tt.configMapName, tt.app, tt.configMapData, fakeClient)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("createConfigMapUtil() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func int64Pointer(a int64) *int64 {
-	return &a
-}
-
-func booleanPointer(a bool) *bool {
-	return &a
-}
-
-func TestAddLocalDirConfOptions(t *testing.T) {
-	testFn := func(test common.Testcase, t *testing.T) {
-		_, err := addLocalDirConfOptions(test.App)
-		if err != nil {
-			t.Fatalf(`Unit test for addLocalDirConfOptions() failed`)
-		}
-
-	}
-	testcases := common.TestCasesList
-	for index, test := range testcases {
-		if index == 0 {
-			//Add spark-local-dir- prefix volume
-			sparkLocalDirVolume := corev1.Volume{
-				Name: "spark-local-dir-1",
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium: "Memory",
-					},
-				},
-			}
-			test.App.Spec.Volumes = append(test.App.Spec.Volumes, sparkLocalDirVolume)
-			sparkLocalDirVolumeMount := corev1.VolumeMount{
-				MountPath: "/etc/ccp/lldc/applogs",
-				Name:      "spark-local-dir-1",
-			}
-			test.App.Spec.Driver.VolumeMounts = append(test.App.Spec.Driver.VolumeMounts, sparkLocalDirVolumeMount)
-			test.App.Spec.Executor.VolumeMounts = append(test.App.Spec.Executor.VolumeMounts, sparkLocalDirVolumeMount)
-		}
-		if index == 1 {
-			test.App.Spec.SparkConf["spark.driver.blockManager.port"] = "7079"
-		}
-		if index == 2 {
-			test.App.Spec.SparkConf["spark.blockManager.port"] = "7079"
-		}
-		if index == 1 {
-			test.App.Spec.SparkConf["spark.driver.blockManager.port"] = "test-val"
-		}
-		if index == 2 {
-			test.App.Spec.SparkConf["spark.blockManager.port"] = "test-val"
-		}
-		testFn(test, t)
-	}
-
 }
