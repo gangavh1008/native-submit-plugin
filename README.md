@@ -50,7 +50,6 @@ The plugin consists of several components:
 - `configmap/`: Configuration management
 - `main/`: Plugin entry point
 
-## Development
 
 ### Building
 
@@ -74,29 +73,3 @@ go test -cover ./...
 # Run specific package tests
 go test -v ./pkg/...
 ```
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE.txt) file for details.
-
-## Support
-
-- GitHub Issues: 
-- Documentation: 
-- Community: 
-
-## Acknowledgments
-
-- [Spark Operator](https://github.com/kubeflow/spark-operator/)
-- [Kubernetes](https://kubernetes.io)
-- [Apache Spark](https://spark.apache.org)
