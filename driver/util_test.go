@@ -7,78 +7,111 @@ import (
 )
 
 func TestDoFetchFile(t *testing.T) {
-	filePath := "file//a.txt"
-	ftpPath := "ftp://localhost/a.txt"
-	httpFile := "http://test.com/a.txt"
-	httpsFile := "https://test.com/a.txt"
-	sparkFile := "spark://a.txt"
-	localFilePath := "local//a.txt"
-	fileName := "a.txt"
+	tests := []struct {
+		name     string
+		filePath string
+		wantErr  bool
+	}{
+		{
+			name:     "file protocol",
+			filePath: "file//a.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "ftp protocol",
+			filePath: "ftp://localhost/a.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "http protocol",
+			filePath: "http://test.com/a.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "https protocol",
+			filePath: "https://test.com/a.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "spark protocol",
+			filePath: "spark://a.txt",
+			wantErr:  false,
+		},
+		{
+			name:     "local protocol",
+			filePath: "local//a.txt",
+			wantErr:  false,
+		},
+	}
 
 	sparkConf := make(map[string]string)
-	_, err := doFetchFile(filePath, createTempDir(), fileName, sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing doFetchFile function")
-	}
-	_, err = downloadFile(filePath, createTempDir(), sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing downloadFile function")
-	}
-	_, err = doFetchFile(ftpPath, createTempDir(), fileName, sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing doFetchFile function")
-	}
-	_, err = downloadFile(ftpPath, createTempDir(), sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing downloadFile function")
-	}
-	_, err = doFetchFile(httpFile, createTempDir(), fileName, sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing doFetchFile function")
-	}
-	_, err = downloadFile(httpFile, createTempDir(), sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing downloadFile function")
-	}
-	_, err = doFetchFile(httpsFile, createTempDir(), fileName, sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing doFetchFile function")
-	}
-	_, err = downloadFile(httpsFile, createTempDir(), sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing downloadFile function")
-	}
-	_, err = doFetchFile(sparkFile, createTempDir(), fileName, sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing doFetchFile function")
-	}
-	_, err = downloadFile(sparkFile, createTempDir(), sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing downloadFile function")
-	}
-	_, err = downloadFile(localFilePath, createTempDir(), sparkConf)
-	if err != nil {
-		t.Log("Error occcurred while testing downloadFile function")
-	}
+	fileName := "a.txt"
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test doFetchFile
+			_, err := doFetchFile(tt.filePath, createTempDir(), fileName, sparkConf)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("doFetchFile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			// Test downloadFile
+			_, err = downloadFile(tt.filePath, createTempDir(), sparkConf)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("downloadFile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
+
 func TestSelectSparkContainer(t *testing.T) {
-	var pod corev1.Pod
-	pod.Name = "driver"
-	pod.Spec.Containers = []corev1.Container{
+	tests := []struct {
+		name          string
+		pod           corev1.Pod
+		containerName string
+		expectedName  string
+	}{
 		{
-			Name: "dummy-container-2",
+			name: "select spark driver container",
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "dummy-container-2"},
+						{Name: "spark-kubernetes-driver"},
+						{Name: "dummy-container"},
+					},
+				},
+			},
+			containerName: "spark-kubernetes-driver",
+			expectedName:  "spark-kubernetes-driver",
 		},
 		{
-			Name: "spark-kubernetes-driver",
+			name: "container not found",
+			pod: corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "dummy-container-2"},
+						{Name: "dummy-container"},
+					},
+				},
+			},
+			containerName: "spark-kubernetes-driver",
+			expectedName:  "",
 		},
-		{
-			Name: "dummy-container",
-		},
-	}
-	podWithSelectedContainer := selectSparkContainer(pod, "spark-kubernetes-driver")
-	if podWithSelectedContainer.Spec.Containers[0].Name != "spark-kubernetes-driver" {
-		t.Fatalf(`Unit test for selectSparkContainer() function failed`)
 	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			podWithSelectedContainer := selectSparkContainer(tt.pod, tt.containerName)
+			if tt.expectedName == "" {
+				if len(podWithSelectedContainer.Spec.Containers) != 0 {
+					t.Errorf("selectSparkContainer() should return empty containers when container not found")
+				}
+				return
+			}
+			if podWithSelectedContainer.Spec.Containers[0].Name != tt.expectedName {
+				t.Errorf("selectSparkContainer() = %v, want %v", podWithSelectedContainer.Spec.Containers[0].Name, tt.expectedName)
+			}
+		})
+	}
 }

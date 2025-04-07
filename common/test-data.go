@@ -7,263 +7,292 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var TestApp = &v1beta2.SparkApplication{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "test-app",
-		Namespace: "default",
-		Labels:    map[string]string{"sparkdeps": "v3"},
-	},
-	Spec: v1beta2.SparkApplicationSpec{
-		Arguments: []string{"pwd"},
-		Deps: v1beta2.Dependencies{
-			Jars:            []string{"local:///sample-apps/sample-basic-spark-operator/spark-extra-jars/examples.jar"},
-			Files:           []string{"local:///sample-apps/sample-basic-spark-operator/test.properties"},
-			PyFiles:         []string{"local:///sample-apps/sample-basic-spark-operator/test.py"},
-			Packages:        []string{"datastax:spark-cassandra-connector:1.4.4-s_2.10"},
-			ExcludePackages: []string{"com.amazonaws:amazon-kinesis-client"},
-			Repositories:    []string{"test-maven-repository"},
+// BaseTestApp returns a base SparkApplication for testing
+func BaseTestApp() *v1beta2.SparkApplication {
+	return &v1beta2.SparkApplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-app",
+			Namespace: "default",
+			Labels:    map[string]string{"sparkdeps": "v3"},
 		},
-		DynamicAllocation: &v1beta2.DynamicAllocation{Enabled: true, InitialExecutors: Int32Pointer(1), MinExecutors: Int32Pointer(1), MaxExecutors: Int32Pointer(1), ShuffleTrackingTimeout: Int64Pointer(1)},
-		HadoopConf:        map[string]string{"abc.def": "xyz", "jkl.ghi": "uvw"},
-		Type:              v1beta2.SparkApplicationTypeScala,
-		Mode:              v1beta2.DeployModeCluster,
-		Image:             StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"),
-		ImagePullPolicy:   StringPointer("IfNotPresent"),
-		ImagePullSecrets: []string{
-			"dummy-data",
-		},
-		MainClass:           StringPointer("org.apache.spark.examples.SparkPi"),
-		MainApplicationFile: StringPointer("local:///sample-apps/sample-basic-spark-operator/sample-basic-spark-operator.jar"),
-		PythonVersion:       StringPointer("/usr/local/bin/python3"),
-		SparkVersion:        "",
-		NodeSelector: map[string]string{
-			"spark.authenticate": "true"},
-		RestartPolicy: v1beta2.RestartPolicy{
-			Type: "Never",
-		},
-		SparkConf: map[string]string{
-			"spark.authenticate":                              "true",
-			"spark.driver.extraClassPath":                     "local:///sample-apps/sample-basic-spark-operator/spark-extra-jars/*",
-			"spark.executor.extraClassPath":                   "local:///sample-apps/sample-basic-spark-operator/spark-extra-jars/*",
-			"spark.io.encryption.enabled":                     "true",
-			"spark.network.crypto.enabled":                    "true",
-			"spark.kubernetes.kerberos.tokenSecret.itemKey":   "test",
-			"spark.dynamicAllocation.enabled":                 "true",
-			"spark.kubernetes.driver.annotation.test":         "test-annotation",
-			"spark.kubernetes.node.selector.test":             "test-node-selector",
-			"spark.kubernetes.driver.node.selector.test":      "test-driver-node-selector",
-			"spark.kubernetes.driver.secretKeyRef.testSecret": "test-secret",
-		},
-		Driver: v1beta2.DriverSpec{
-			SparkPodSpec: v1beta2.SparkPodSpec{
-				Cores: Int32Pointer(1),
-				ConfigMaps: []v1beta2.NamePath{
-					{
-						Name: "test-configmap",
-						Path: "/etc/ccp/lldc/rsyslog",
-					},
-				},
-				CoreLimit: StringPointer("1200m"),
-				Env: []corev1.EnvVar{{
-					Name:  "Dummy-env",
-					Value: "dummy-env-val",
-				},
-				},
-				EnvVars: map[string]string{
-					"Name":  "Dummy-env",
-					"Value": "dummy-env-val",
-				},
-				EnvSecretKeyRefs: map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}},
-				Memory:           StringPointer("512m"),
-				Labels:           LabelsForSpark(),
-				ServiceAccount:   StringPointer("driver-serviceaccount"),
-
-				Annotations: map[string]string{
-					"opencensus.k8s-integration.com/inject":             "enabled",
-					"opencensus.k8s-integration.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
-				},
-				PodSecurityContext: &corev1.PodSecurityContext{
-					RunAsUser:    Int64Pointer(185),
-					RunAsNonRoot: BoolPointer(true),
-				},
-				SecurityContext: &corev1.SecurityContext{
-					RunAsUser:    Int64Pointer(185),
-					RunAsNonRoot: BoolPointer(true),
-				},
-				Secrets: []v1beta2.SecretInfo{
-					{
-						Name: "f8d3bdf3-a20b-448c-b2ae-bf14ba4bffc6",
-						Path: "/etc/ccp-secrets",
-						Type: "Generic",
-					},
-				},
-
-				Sidecars: []corev1.Container{
-					{
-						Command: []string{
-							"/usr/sbin/rsyslogd",
-							"-n",
-							"-f",
-							"/etc/ccp/lldc/rsyslog/rsyslog.conf",
-						},
-						Env: []corev1.EnvVar{
-							{
-								Name:  "test",
-								Value: "test_value",
-							},
-						},
-						Image: "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/rsyslog_gcp:latest",
-						Name:  "ccp-lldc",
-						Resources: corev1.ResourceRequirements{
-							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("512Mi"),
-								corev1.ResourceCPU:    resource.MustParse("500m"),
-							},
-							Requests: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("512Mi"),
-								corev1.ResourceCPU:    resource.MustParse("500m"),
-							},
-						},
-						VolumeMounts: []corev1.VolumeMount{
-							{
-								MountPath: "/etc/ccp/lldc/applogs",
-								Name:      "ccp-lldc-applogs",
-							},
-							{
-								MountPath: "/etc/ccp/lldc/statedir",
-								Name:      "ccp-lldc-statedir",
-							},
+		Spec: v1beta2.SparkApplicationSpec{
+			Arguments: []string{"pwd"},
+			Deps: v1beta2.Dependencies{
+				Jars:            []string{"local:///sample-apps/sample-basic-spark-operator/spark-extra-jars/examples.jar"},
+				Files:           []string{"local:///sample-apps/sample-basic-spark-operator/test.properties"},
+				PyFiles:         []string{"local:///sample-apps/sample-basic-spark-operator/test.py"},
+				Packages:        []string{"datastax:spark-cassandra-connector:1.4.4-s_2.10"},
+				ExcludePackages: []string{"com.amazonaws:amazon-kinesis-client"},
+				Repositories:    []string{"test-maven-repository"},
+			},
+			DynamicAllocation: &v1beta2.DynamicAllocation{Enabled: true, InitialExecutors: Int32Pointer(1), MinExecutors: Int32Pointer(1), MaxExecutors: Int32Pointer(1), ShuffleTrackingTimeout: Int64Pointer(1)},
+			HadoopConf:        map[string]string{"abc.def": "xyz", "jkl.ghi": "uvw"},
+			Type:              v1beta2.SparkApplicationTypeScala,
+			Mode:              v1beta2.DeployModeCluster,
+			Image:             StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"),
+			ImagePullPolicy:   StringPointer("IfNotPresent"),
+			ImagePullSecrets: []string{
+				"dummy-data",
+			},
+			MainClass:           StringPointer("org.apache.spark.examples.SparkPi"),
+			MainApplicationFile: StringPointer("local:///sample-apps/sample-basic-spark-operator/sample-basic-spark-operator.jar"),
+			PythonVersion:       StringPointer("/usr/local/bin/python3"),
+			SparkVersion:        "",
+			NodeSelector: map[string]string{
+				"spark.authenticate": "true"},
+			RestartPolicy: v1beta2.RestartPolicy{
+				Type: "Never",
+			},
+			SparkConf: map[string]string{
+				"spark.authenticate":                              "true",
+				"spark.driver.extraClassPath":                     "local:///sample-apps/sample-basic-spark-operator/spark-extra-jars/*",
+				"spark.executor.extraClassPath":                   "local:///sample-apps/sample-basic-spark-operator/spark-extra-jars/*",
+				"spark.io.encryption.enabled":                     "true",
+				"spark.network.crypto.enabled":                    "true",
+				"spark.kubernetes.kerberos.tokenSecret.itemKey":   "test",
+				"spark.dynamicAllocation.enabled":                 "true",
+				"spark.kubernetes.driver.annotation.test":         "test-annotation",
+				"spark.kubernetes.node.selector.test":             "test-node-selector",
+				"spark.kubernetes.driver.node.selector.test":      "test-driver-node-selector",
+				"spark.kubernetes.driver.secretKeyRef.testSecret": "test-secret",
+			},
+			Driver: v1beta2.DriverSpec{
+				SparkPodSpec: v1beta2.SparkPodSpec{
+					Cores: Int32Pointer(1),
+					ConfigMaps: []v1beta2.NamePath{
+						{
+							Name: "test-configmap",
+							Path: "/etc/ccp/lldc/rsyslog",
 						},
 					},
-				},
+					CoreLimit: StringPointer("1200m"),
+					Env: []corev1.EnvVar{{
+						Name:  "Dummy-env",
+						Value: "dummy-env-val",
+					},
+					},
+					EnvVars: map[string]string{
+						"Name":  "Dummy-env",
+						"Value": "dummy-env-val",
+					},
+					EnvSecretKeyRefs: map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}},
+					Memory:           StringPointer("512m"),
+					Labels:           LabelsForSpark(),
+					ServiceAccount:   StringPointer("driver-serviceaccount"),
 
-				VolumeMounts: []corev1.VolumeMount{
+					Annotations: map[string]string{
+						"opencensus.k8s-integration.com/inject":             "enabled",
+						"opencensus.k8s-integration.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
+					},
+					PodSecurityContext: &corev1.PodSecurityContext{
+						RunAsUser:    Int64Pointer(185),
+						RunAsNonRoot: BoolPointer(true),
+					},
+					SecurityContext: &corev1.SecurityContext{
+						RunAsUser:    Int64Pointer(185),
+						RunAsNonRoot: BoolPointer(true),
+					},
+					Secrets: []v1beta2.SecretInfo{
+						{
+							Name: "f8d3bdf3-a20b-448c-b2ae-bf14ba4bffc6",
+							Path: "/etc/ccp-secrets",
+							Type: "Generic",
+						},
+					},
 
-					{
-						MountPath: "/etc/ccp/lldc/applogs",
-						Name:      "ccp-lldc-applogs",
+					Sidecars: []corev1.Container{
+						{
+							Command: []string{
+								"/usr/sbin/rsyslogd",
+								"-n",
+								"-f",
+								"/etc/ccp/lldc/rsyslog/rsyslog.conf",
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "test",
+									Value: "test_value",
+								},
+							},
+							Image: "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/rsyslog_gcp:latest",
+							Name:  "ccp-lldc",
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceMemory: resource.MustParse("512Mi"),
+									corev1.ResourceCPU:    resource.MustParse("500m"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceMemory: resource.MustParse("512Mi"),
+									corev1.ResourceCPU:    resource.MustParse("500m"),
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									MountPath: "/etc/ccp/lldc/applogs",
+									Name:      "ccp-lldc-applogs",
+								},
+								{
+									MountPath: "/etc/ccp/lldc/statedir",
+									Name:      "ccp-lldc-statedir",
+								},
+							},
+						},
 					},
-					{
-						MountPath: "/etc/ccp/lldc/statedir",
-						Name:      "ccp-lldc-statedir",
-					},
-					{
-						MountPath: "/etc/test1",
-						Name:      "spark-local-dir-11",
-					},
-					{
-						MountPath: "/etc/test2",
-						Name:      "spark-local-dir-22",
-					},
-				},
-			},
-			CoreRequest:        StringPointer("1000m"),
-			ServiceAnnotations: map[string]string{"test": "test-annotation"},
 
-			JavaOptions:      StringPointer("XX:+PrintGCDetails -XX:+PrintGCTimeStamps"),
-			KubernetesMaster: StringPointer(" k8s://http://example.com:8080"),
+					VolumeMounts: []corev1.VolumeMount{
+
+						{
+							MountPath: "/etc/ccp/lldc/applogs",
+							Name:      "ccp-lldc-applogs",
+						},
+						{
+							MountPath: "/etc/ccp/lldc/statedir",
+							Name:      "ccp-lldc-statedir",
+						},
+						{
+							MountPath: "/etc/test1",
+							Name:      "spark-local-dir-11",
+						},
+						{
+							MountPath: "/etc/test2",
+							Name:      "spark-local-dir-22",
+						},
+					},
+				},
+				CoreRequest:        StringPointer("1000m"),
+				ServiceAnnotations: map[string]string{"test": "test-annotation"},
+
+				JavaOptions:      StringPointer("XX:+PrintGCDetails -XX:+PrintGCTimeStamps"),
+				KubernetesMaster: StringPointer(" k8s://http://example.com:8080"),
+			},
+			Executor: v1beta2.ExecutorSpec{
+				SparkPodSpec: v1beta2.SparkPodSpec{
+					Annotations: map[string]string{
+						"opencensus.k8s-integration.com/inject":             "enabled",
+						"opencensus.k8s-integration.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
+					},
+					Cores:  Int32Pointer(1),
+					Labels: LabelsForSpark(),
+					Memory: StringPointer("512m"),
+					PodSecurityContext: &corev1.PodSecurityContext{
+						RunAsUser:    Int64Pointer(185),
+						RunAsNonRoot: BoolPointer(true),
+					},
+					Secrets: []v1beta2.SecretInfo{{Name: "test", Path: "\\spark\\bin", Type: "GCPServiceAccount"}, {Name: "test", Path: "\\spark\\bin", Type: "HadoopDelegationToken"}},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							MountPath: "/etc/ccp/lldc/applogs",
+							Name:      "ccp-lldc-applogs",
+						},
+						{
+							MountPath: "/etc/ccp/lldc/statedir",
+							Name:      "ccp-lldc-statedir",
+						},
+						{
+							MountPath: "/etc/test1",
+							Name:      "spark-local-dir-11",
+						},
+						{
+							MountPath: "/etc/test2",
+							Name:      "spark-local-dir-22",
+						},
+					},
+				},
+				Instances:   Int32Pointer(1),
+				JavaOptions: StringPointer("XX:+PrintGCDetails -XX:+PrintGCTimeStamps"),
+			},
+			Monitoring: &v1beta2.MonitoringSpec{
+				ExposeDriverMetrics:   true,
+				ExposeExecutorMetrics: true,
+				MetricsPropertiesFile: StringPointer("/sample-apps/sample-basic-spark-operator/metrics.properties"),
+				Prometheus: &v1beta2.PrometheusSpec{
+					ConfigFile:     StringPointer("/sample-apps/sample-basic-spark-operator/jmx-agent-config.yaml"),
+					JmxExporterJar: "/sample-apps/sample-basic-spark-operator/agents/prometheus-jmx-agent.jar",
+					Port:           Int32Pointer(8900),
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "ccp-lldc-applogs",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{
+							Medium: "Memory",
+						},
+					},
+				},
+				{
+					Name: "ccp-lldc-statedir",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{
+							Medium: "Memory",
+						},
+					},
+				},
+				{
+					Name: "spark-local-dir-11",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/home/test",
+						},
+					},
+				},
+				{
+					Name: "spark-local-dir-22",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "test",
+						},
+					},
+				},
+			},
 		},
-		Executor: v1beta2.ExecutorSpec{
-			SparkPodSpec: v1beta2.SparkPodSpec{
-				Annotations: map[string]string{
-					"opencensus.k8s-integration.com/inject":             "enabled",
-					"opencensus.k8s-integration.com/prometheus-targets": `[{"path": "/metrics","port": "8090","container_name": "spark-kubernetes-driver"}]`,
-				},
-				Cores:  Int32Pointer(1),
-				Labels: LabelsForSpark(),
-				Memory: StringPointer("512m"),
-				PodSecurityContext: &corev1.PodSecurityContext{
-					RunAsUser:    Int64Pointer(185),
-					RunAsNonRoot: BoolPointer(true),
-				},
-				Secrets: []v1beta2.SecretInfo{{Name: "test", Path: "\\spark\\bin", Type: "GCPServiceAccount"}, {Name: "test", Path: "\\spark\\bin", Type: "HadoopDelegationToken"}},
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						MountPath: "/etc/ccp/lldc/applogs",
-						Name:      "ccp-lldc-applogs",
-					},
-					{
-						MountPath: "/etc/ccp/lldc/statedir",
-						Name:      "ccp-lldc-statedir",
-					},
-					{
-						MountPath: "/etc/test1",
-						Name:      "spark-local-dir-11",
-					},
-					{
-						MountPath: "/etc/test2",
-						Name:      "spark-local-dir-22",
-					},
-				},
-			},
-			Instances:   Int32Pointer(1),
-			JavaOptions: StringPointer("XX:+PrintGCDetails -XX:+PrintGCTimeStamps"),
+	}
+}
+
+// TestApp is a global test app instance
+var TestApp = BaseTestApp()
+
+// TestCasesList returns a list of test cases with specific modifications
+func TestCasesList() []Testcase {
+	baseApp := BaseTestApp()
+	return []Testcase{
+		{
+			App: baseApp,
 		},
-		Monitoring: &v1beta2.MonitoringSpec{
-			ExposeDriverMetrics:   true,
-			ExposeExecutorMetrics: true,
-			MetricsPropertiesFile: StringPointer("/sample-apps/sample-basic-spark-operator/metrics.properties"),
-			Prometheus: &v1beta2.PrometheusSpec{
-				ConfigFile:     StringPointer("/sample-apps/sample-basic-spark-operator/jmx-agent-config.yaml"),
-				JmxExporterJar: "/sample-apps/sample-basic-spark-operator/agents/prometheus-jmx-agent.jar",
-				Port:           Int32Pointer(8900),
-			},
+		{
+			App: func() *v1beta2.SparkApplication {
+				app := baseApp.DeepCopy()
+				app.Spec.SparkConf["spark.kubernetes.local.dirs.tmpfs"] = "false"
+				app.Spec.SparkConf["spark.kubernetes.driver.SPARK_LOCAL_DIRS"] = "/tmp/spark-local-dir-2,/tmp/spark-local-dir-1,/tmp/spark-local-dir-100"
+				return app
+			}(),
 		},
-		Volumes: []corev1.Volume{
-			{
-				Name: "ccp-lldc-applogs",
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium: "Memory",
-					},
-				},
-			},
-			{
-				Name: "ccp-lldc-statedir",
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium: "Memory",
-					},
-				},
-			},
-			{
-				Name: "spark-local-dir-11",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/home/test",
-					},
-				},
-			},
-			{
-				Name: "spark-local-dir-22",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: "test",
-					},
-				},
-			},
+		{
+			App: func() *v1beta2.SparkApplication {
+				app := baseApp.DeepCopy()
+				app.Spec.Volumes = nil
+				app.Spec.Driver.VolumeMounts = nil
+				app.Spec.SparkConf["spark.kubernetes.local.dirs.tmpfs"] = "true"
+				return app
+			}(),
 		},
-	},
+		{
+			App: func() *v1beta2.SparkApplication {
+				app := baseApp.DeepCopy()
+				app.Spec.SparkConf["spark.driver.blockManager.port"] = "7079"
+				return app
+			}(),
+		},
+		{
+			App: func() *v1beta2.SparkApplication {
+				app := baseApp.DeepCopy()
+				app.Spec.SparkConf["spark.blockManager.port"] = "7079"
+				return app
+			}(),
+		},
+	}
 }
 
 type Testcase struct {
 	App *v1beta2.SparkApplication
-}
-
-var TestCasesList = []Testcase{
-	{
-		App: TestApp,
-	},
-	{
-		App: TestApp,
-	},
-	{
-		App: TestApp,
-	},
-	{
-		App: TestApp,
-	},
-	{
-		App: TestApp,
-	},
 }

@@ -18,87 +18,115 @@ import (
 )
 
 func TestCreateSparkAppDriverPod(t *testing.T) {
-	type testcase struct {
+	tests := []struct {
+		name                 string
 		app                  *v1beta2.SparkApplication
 		driverConfigMapName  string
 		serviceLabels        map[string]string
 		submissionID         string
 		createdApplicationId string
+		setupFunc            func(*v1beta2.SparkApplication)
+	}{
+		{
+			name:                 "basic driver pod creation",
+			app:                  common.BaseTestApp(),
+			driverConfigMapName:  "test-app-driver-configmap",
+			serviceLabels:        map[string]string{SparkAppNameLabel: "test-app"},
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			setupFunc: func(app *v1beta2.SparkApplication) {
+				app.Spec.SparkConf["spark.kubernetes.driver.podTemplateFile"] = ""
+				app.Spec.SparkConf["spark.kubernetes.driver.podTemplateContainerName"] = "spark-kubernetes-driver"
+				app.Spec.Driver.Annotations = nil
+				app.Spec.SparkConf["spark.kubernetes.node.selector.identifier"] = "testIdentifier"
+				app.Spec.SparkConf["spark.kubernetes.driver.node.selector.identifier"] = "testIdentifier"
+				app.Spec.SparkConf["spark.kubernetes.scheduler.name"] = "dummy-scheduler"
+				app.Spec.Image = nil
+				app.Spec.SparkConf["spark.kubernetes.container.image"] = "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"
+				app.Spec.SparkConf["spark.kubernetes.memoryOverhead"] = "10m"
+			},
+		},
+		{
+			name:                 "driver pod with security context",
+			app:                  common.BaseTestApp(),
+			driverConfigMapName:  "test-app-driver-configmap",
+			serviceLabels:        map[string]string{SparkAppNameLabel: "test-app"},
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			setupFunc: func(app *v1beta2.SparkApplication) {
+				app.Spec.Driver.SecurityContext = nil
+				app.Spec.ImagePullPolicy = nil
+				app.Spec.Image = nil
+				app.Spec.Driver.Image = common.StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1")
+				app.Spec.Driver.Memory = nil
+				app.Spec.Driver.CoreLimit = nil
+				app.Spec.Driver.Cores = nil
+				app.Spec.MemoryOverheadFactor = common.StringPointer("0.15")
+				app.Spec.NodeSelector = map[string]string{"identifier": "testIdentifier"}
+			},
+		},
+		{
+			name:                 "driver pod with service account",
+			app:                  common.BaseTestApp(),
+			driverConfigMapName:  "test-app-driver-configmap",
+			serviceLabels:        map[string]string{SparkAppNameLabel: "test-app"},
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			setupFunc: func(app *v1beta2.SparkApplication) {
+				app.Spec.Driver.NodeSelector = map[string]string{"identifier": "testIdentifier"}
+				app.Spec.ImagePullSecrets = nil
+				app.Spec.SparkConf["spark.kubernetes.container.image.pullSecrets"] = "dummy-data"
+				app.Spec.Driver.ServiceAccount = nil
+				app.Spec.SparkConf["spark.kubernetes.authenticate.driver.serviceAccountName"] = "driver-account"
+				app.Spec.SparkConf["spark.kubernetes.driver.scheduler.name"] = "dummy-scheduler"
+				app.Spec.Driver.TerminationGracePeriodSeconds = common.Int64Pointer(1)
+				app.Spec.Driver.Tolerations = []v1.Toleration{{Key: "example-key", Operator: "Exists", Effect: "NoSchedule"}}
+				app.Spec.SparkConf["spark.kubernetes.driver.secrets.test"] = "test-secret"
+				app.Spec.Driver.InitContainers = []v1.Container{{Name: "test-init-container", Image: "test"}}
+				app.Spec.Image = nil
+				app.Spec.Driver.Image = nil
+				app.Spec.SparkConf["spark.kubernetes.driver.container.image"] = "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"
+				app.Spec.ImagePullPolicy = nil
+				app.Spec.SparkConf["spark.kubernetes.container.image.pullPolicy"] = "IfNotPresent"
+				app.Spec.SparkConf["spark.driver.memoryOverhead"] = "10m"
+			},
+		},
+		{
+			name:                 "driver pod with memory overhead",
+			app:                  common.BaseTestApp(),
+			driverConfigMapName:  "test-app-driver-configmap",
+			serviceLabels:        map[string]string{SparkAppNameLabel: "test-app"},
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			setupFunc: func(app *v1beta2.SparkApplication) {
+				app.Spec.Driver.MemoryOverhead = common.StringPointer("10m")
+			},
+		},
 	}
-	//fakeClient := fake.NewSimpleClientset()
+
 	// Create a fake client
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1.AddToScheme(scheme))
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		Build()
-	testFn := func(test testcase, t *testing.T) {
-		errCreateSparkAppConfigMap := configmap.Create(test.app, test.submissionID, test.createdApplicationId, fakeClient, test.driverConfigMapName, "test")
-		if errCreateSparkAppConfigMap != nil {
-			t.Errorf("failed to create configmap: %v", errCreateSparkAppConfigMap)
-		}
 
-		errCreateDriverPod := Create(test.app, test.serviceLabels, test.driverConfigMapName, fakeClient, test.app.Spec.Driver.VolumeMounts, test.app.Spec.Volumes)
-		if errCreateDriverPod != nil {
-			t.Errorf("failed to create Driver pod: %v", errCreateDriverPod)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test case
+			tt.setupFunc(tt.app)
 
-	}
-	testcases := []testcase{
-		{
-			app:                  common.TestApp,
-			driverConfigMapName:  "test-app-driver-configmap",
-			serviceLabels:        map[string]string{SparkAppNameLabel: "test-app"},
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-		},
-	}
-	testcases = append(testcases, testcases[0], testcases[0], testcases[0], testcases[0], testcases[0])
-	for index, test := range testcases {
-		if index == 0 {
-			test.app.Spec.SparkConf["spark.kubernetes.driver.podTemplateFile"] = ""
-			test.app.Spec.SparkConf["spark.kubernetes.driver.podTemplateContainerName"] = "spark-kubernetes-driver"
-			test.app.Spec.Driver.Annotations = nil
-			test.app.Spec.SparkConf["spark.kubernetes.node.selector.identifier"] = "testIdentifier"
-			test.app.Spec.SparkConf["spark.kubernetes.driver.node.selector.identifier"] = "testIdentifier"
-			test.app.Spec.SparkConf["spark.kubernetes.scheduler.name"] = "dummy-scheduler"
-			test.app.Spec.Image = nil
-			test.app.Spec.SparkConf["spark.kubernetes.container.image"] = "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"
-			test.app.Spec.SparkConf["spark.kubernetes.memoryOverhead"] = "10m"
-		}
-		if index == 1 {
-			test.app.Spec.Driver.SecurityContext = nil
-			test.app.Spec.ImagePullPolicy = nil
-			test.app.Spec.Image = nil
-			test.app.Spec.Driver.Image = common.StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1")
-			test.app.Spec.Driver.Memory = nil
-			test.app.Spec.Driver.CoreLimit = nil
-			test.app.Spec.Driver.Cores = nil
-			test.app.Spec.MemoryOverheadFactor = common.StringPointer("0.15")
-			test.app.Spec.NodeSelector = map[string]string{"identifier": "testIdentifier"}
-		}
-		if index == 2 {
-			test.app.Spec.Driver.NodeSelector = map[string]string{"identifier": "testIdentifier"}
-			test.app.Spec.ImagePullSecrets = nil
-			test.app.Spec.SparkConf["spark.kubernetes.container.image.pullSecrets"] = "dummy-data"
-			test.app.Spec.Driver.ServiceAccount = nil
-			test.app.Spec.SparkConf["spark.kubernetes.authenticate.driver.serviceAccountName"] = "driver-account"
-			test.app.Spec.SparkConf["spark.kubernetes.driver.scheduler.name"] = "dummy-scheduler"
-			test.app.Spec.Driver.TerminationGracePeriodSeconds = common.Int64Pointer(1)
-			test.app.Spec.Driver.Tolerations = []v1.Toleration{{Key: "example-key", Operator: "Exists", Effect: "NoSchedule"}}
-			test.app.Spec.SparkConf["spark.kubernetes.driver.secrets.test"] = "test-secret"
-			test.app.Spec.Driver.InitContainers = []v1.Container{{Name: "test-init-container", Image: "test"}}
-			test.app.Spec.Image = nil
-			test.app.Spec.Driver.Image = nil
-			test.app.Spec.SparkConf["spark.kubernetes.driver.container.image"] = "dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1"
-			test.app.Spec.ImagePullPolicy = nil
-			test.app.Spec.SparkConf["spark.kubernetes.container.image.pullPolicy"] = "IfNotPresent"
-			test.app.Spec.SparkConf["spark.driver.memoryOverhead"] = "10m"
-		}
-		if index == 3 {
-			test.app.Spec.Driver.MemoryOverhead = common.StringPointer("10m")
-		}
+			// Create configmap
+			err := configmap.Create(tt.app, tt.submissionID, tt.createdApplicationId, fakeClient, tt.driverConfigMapName, "test")
+			if err != nil {
+				t.Fatalf("failed to create configmap: %v", err)
+			}
 
-		testFn(test, t)
+			// Create driver pod
+			err = Create(tt.app, tt.serviceLabels, tt.driverConfigMapName, fakeClient, tt.app.Spec.Driver.VolumeMounts, tt.app.Spec.Volumes)
+			if err != nil {
+				t.Fatalf("failed to create Driver pod: %v", err)
+			}
+		})
 	}
 }

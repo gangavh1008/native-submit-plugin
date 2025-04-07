@@ -19,12 +19,38 @@ var memoryQuantity resource.Quantity
 var cpuQuantity resource.Quantity
 
 func TestCreateSparkAppConfigMap(t *testing.T) {
-
-	type testcase struct {
+	tests := []struct {
+		name                 string
 		app                  *v1beta2.SparkApplication
 		submissionID         string
 		createdApplicationId string
 		driverConfigMapName  string
+		wantErr              bool
+	}{
+		{
+			name:                 "basic configmap creation",
+			app:                  common.BaseTestApp(),
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			driverConfigMapName:  "test-app-driver-configmap",
+			wantErr:              false,
+		},
+		{
+			name:                 "configmap with empty submission ID",
+			app:                  common.BaseTestApp(),
+			submissionID:         "",
+			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			driverConfigMapName:  "test-app-driver-configmap",
+			wantErr:              true,
+		},
+		{
+			name:                 "configmap with empty created application ID",
+			app:                  common.BaseTestApp(),
+			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			createdApplicationId: "",
+			driverConfigMapName:  "test-app-driver-configmap",
+			wantErr:              true,
+		},
 	}
 
 	// Create a fake client
@@ -34,155 +60,121 @@ func TestCreateSparkAppConfigMap(t *testing.T) {
 		WithScheme(scheme).
 		Build()
 
-	testFn := func(test testcase, t *testing.T) {
-		err := Create(test.app, test.submissionID, test.createdApplicationId, fakeClient, test.driverConfigMapName, "test")
-		if err != nil {
-			t.Errorf("failed to create configmap: %v", err)
-		}
-		configMap := &apiv1.ConfigMap{}
-		configMap.Name = "test-app-driver-configmap"
-		configMap.Namespace = "default"
-		err = fakeClient.Get(context.TODO(), ctrlClient.ObjectKeyFromObject(configMap), configMap)
-		if err != nil && configMap.Data != nil {
-			t.Errorf("failed to get ConfigMap %s: %v", "test-app-driver-configmap", err)
-		}
-	}
-	testcases := []testcase{
-		{
-			app:                  common.TestApp,
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			driverConfigMapName:  "test-app-driver-configmap",
-		},
-	}
-	for _, test := range testcases {
-		testFn(test, t)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Create(tt.app, tt.submissionID, tt.createdApplicationId, fakeClient, tt.driverConfigMapName, "test")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Create() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
 
+			if !tt.wantErr {
+				configMap := &apiv1.ConfigMap{}
+				configMap.Name = tt.driverConfigMapName
+				configMap.Namespace = "default"
+				err = fakeClient.Get(context.TODO(), ctrlClient.ObjectKeyFromObject(configMap), configMap)
+				if err != nil {
+					t.Errorf("failed to get ConfigMap %s: %v", tt.driverConfigMapName, err)
+				}
+				if configMap.Data == nil {
+					t.Errorf("ConfigMap %s data is nil", tt.driverConfigMapName)
+				}
+			}
+		})
+	}
 }
 
 func TestBuildAltSubmissionCommandArgs(t *testing.T) {
-
-	type testcase struct {
+	tests := []struct {
+		name                 string
 		app                  *v1beta2.SparkApplication
 		driverPodName        string
 		submissionID         string
 		createdApplicationId string
-	}
-	testFn := func(test testcase, t *testing.T) {
-		_, err := buildAltSubmissionCommandArgs(test.app, test.driverPodName, test.submissionID, test.createdApplicationId, "testservicename")
-		if err != nil {
-			t.Errorf("failed to build Spark Application Submission Arguments: %v", err)
-		}
-	}
-	testcases := []testcase{
+		wantErr              bool
+	}{
 		{
-			app:                  common.TestApp,
+			name:                 "basic submission args",
+			app:                  common.BaseTestApp(),
+			driverPodName:        "test-app-driver",
 			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
 			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			driverPodName:        "test-app-driver",
+			wantErr:              false,
 		},
 		{
-			app:                  common.TestApp,
+			name:                 "submission args with empty driver pod name",
+			app:                  common.BaseTestApp(),
+			driverPodName:        "",
 			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
 			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			driverPodName:        "test-app-driver",
+			wantErr:              true,
 		},
 		{
-			app:                  common.TestApp,
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			name:                 "submission args with empty submission ID",
+			app:                  common.BaseTestApp(),
 			driverPodName:        "test-app-driver",
-		},
-		{
-			app:                  common.TestApp,
-			submissionID:         "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
+			submissionID:         "",
 			createdApplicationId: "bJskVrN0XoSAdLypytgZ8WJNZwGJF9eO",
-			driverPodName:        "test-app-driver",
+			wantErr:              true,
 		},
 	}
-	for index, test := range testcases {
-		if index == 0 {
-			test.app.Spec.Driver.Cores = nil
-			test.app.Spec.Driver.CoreRequest = nil
-			test.app.Spec.Driver.CoreLimit = nil
-			test.app.Spec.Executor.CoreRequest = nil
-			test.app.Spec.Executor.Cores = nil
-			test.app.Spec.Executor.CoreLimit = nil
-			test.app.Spec.Driver.Secrets = []v1beta2.SecretInfo{
-				{
-					Name: "f8d3bdf3-a20b-448c-b2ae-bf14ba4bffc6",
-					Path: "/etc/ccp-secrets",
-					Type: "GCPServiceAccount",
-				},
-				{Name: "test", Path: "etc/ccp-secrets", Type: "HadoopDelegationToken"},
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildAltSubmissionCommandArgs(tt.app, tt.driverPodName, tt.submissionID, tt.createdApplicationId, "testservicename")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("buildAltSubmissionCommandArgs() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
-			test.app.Spec.Executor.Image = common.StringPointer("dummy-placer.dkr.ecr.us-west-2.amazonaws.com/basic-spark-test-3.3.2:1")
-			test.app.Spec.Driver.EnvSecretKeyRefs = map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}}
-			test.app.Spec.Executor.EnvSecretKeyRefs = map[string]v1beta2.NameKey{"test": {Key: "test", Name: "test"}}
-
-		}
-		if index == 1 {
-			test.app.Spec.Executor.CoreRequest = common.StringPointer("1")
-		}
-		if index == 2 {
-			test.app.Spec.SparkConf["spark.kubernetes.executor.request.cores"] = "1200"
-			test.app.Spec.SparkConf["spark.driver.cores"] = "1200"
-			test.app.Spec.SparkConf["spark.kubernetes.driver.request.cores"] = "1200"
-			test.app.Spec.SparkConf["spark.kubernetes.driver.limit.cores"] = "1200"
-			test.app.Spec.SparkConf["spark.executor.cores"] = "1200"
-			test.app.Spec.SparkConf["spark.executor.limit.cores"] = "1200"
-			test.app.Spec.Executor.MemoryOverhead = common.StringPointer("0.2")
-			test.app.Spec.Type = v1beta2.SparkApplicationTypePython
-			test.app.Spec.Executor.ServiceAccount = common.StringPointer("driver-serviceaccount")
-			test.app.Spec.Executor.DeleteOnTermination = common.BoolPointer(true)
-		}
-		if index == 3 {
-			test.app.Spec.Executor.Memory = nil
-			test.app.Spec.Type = v1beta2.SparkApplicationTypeR
-			test.app.Spec.Executor.EnvVars = map[string]string{
-				"Name":  "Dummy-env",
-				"Value": "dummy-env-val",
-			}
-		}
-		testFn(test, t)
+		})
 	}
-
 }
-func TestCreateSparkAppConfigMapUtil(t *testing.T) {
-	//CreateConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, configMapData map[string]string, kubeClient kubernetes.Interface) error
 
-	type testcase struct {
+func TestCreateSparkAppConfigMapUtil(t *testing.T) {
+	tests := []struct {
+		name          string
 		app           *v1beta2.SparkApplication
 		configMapName string
 		configMapData map[string]string
+		wantErr       bool
+	}{
+		{
+			name:          "basic configmap util",
+			app:           common.BaseTestApp(),
+			configMapName: "test-app-driver-config-map",
+			configMapData: map[string]string{"app-name": "test-app"},
+			wantErr:       false,
+		},
+		{
+			name:          "configmap util with empty configmap name",
+			app:           common.BaseTestApp(),
+			configMapName: "",
+			configMapData: map[string]string{"app-name": "test-app"},
+			wantErr:       true,
+		},
+		{
+			name:          "configmap util with nil configmap data",
+			app:           common.BaseTestApp(),
+			configMapName: "test-app-driver-config-map",
+			configMapData: nil,
+			wantErr:       true,
+		},
 	}
 
+	// Create a fake client
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		Build()
-	//fakeClient := fake.NewSimpleClientset()
-	testFn := func(test testcase, t *testing.T) {
-		err := createConfigMapUtil(test.configMapName, test.app, test.configMapData, fakeClient)
-		if err != nil {
-			t.Errorf("Unit test for createConfigMapUtil() function failed with error : %v", err)
-		}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := createConfigMapUtil(tt.configMapName, tt.app, tt.configMapData, fakeClient)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createConfigMapUtil() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
-	testcases := []testcase{
-		{
-			app:           common.TestApp,
-			configMapName: "test-app-driver-config-map",
-			configMapData: map[string]string{"app-name": "test-app"},
-		},
-	}
-	for _, test := range testcases {
-		testFn(test, t)
-	}
-
 }
 
 func int64Pointer(a int64) *int64 {
