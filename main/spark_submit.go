@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	ctrl "sigs.k8s.io/controller-runtime"
+
 	"github.com/google/uuid"
 	"github.com/kubeflow/spark-operator/api/v1beta2"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -50,12 +52,8 @@ const (
 // Logic involved in moving "New" Spark Application to "Submitted" state is implemented in Golang with this function RunAltSparkSubmit as starting step
 // 3 Resources are created in this logic per new Spark Application, in the order listed: ConfigMap for the Spark Application, Driver Pod, Driver Service
 
-func runAltSparkSubmitWrapper(app *v1beta2.SparkApplication, cl ctrlClient.Client) error {
-	_, err := runAltSparkSubmit(app, app.Status.SubmissionID, cl)
-	return err
-}
-
-func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string, kubeClient ctrlClient.Client) (bool, error) {
+func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string) (bool, error) {
+	kubeClient := getKubeClientOrDie()
 	if app == nil {
 		return false, fmt.Errorf("spark application cannot be nil")
 	}
@@ -156,4 +154,20 @@ func getServiceName(app *v1beta2.SparkApplication) string {
 func randomHex(n int) (string, error) {
 	bytes := make([]byte, n)
 	return hex.EncodeToString(bytes), nil
+}
+
+func getKubeClientOrDie() *kubernetes.Clientset {
+	// Get the Kubernetes REST config (from kubeconfig or in-cluster)
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		panic("failed to get kube config: " + err.Error())
+	}
+
+	// Create the Kubernetes clientset
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		panic("failed to create clientset: " + err.Error())
+	}
+
+	return clientset
 }

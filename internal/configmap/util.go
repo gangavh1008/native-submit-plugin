@@ -11,8 +11,8 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 // CreateConfigMapUtil Helper func to create Spark Application configmap
-func createConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, configMapData map[string]string, kubeClient ctrlClient.Client) error {
+func createConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, configMapData map[string]string, kubeClient *kubernetes.Clientset) error {
 	configMap := &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            configMapName,
@@ -33,19 +33,16 @@ func createConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, co
 
 	createConfigMapErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		existingConfigMap := &apiv1.ConfigMap{}
-		err := kubeClient.Get(context.TODO(), ctrlClient.ObjectKeyFromObject(configMap), existingConfigMap)
-		//cm, err := kubeClient.CoreV1().ConfigMaps(app.Namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+		cm, err := kubeClient.CoreV1().ConfigMaps(app.Namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 		if apiErrors.IsNotFound(err) {
-			createErr := kubeClient.Create(context.TODO(), configMap)
-			//_, createErr := kubeClient.CoreV1().ConfigMaps(app.Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
+			_, createErr := kubeClient.CoreV1().ConfigMaps(app.Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
 			return createErr
 		}
 		if err != nil {
 			return err
 		}
 		existingConfigMap.Data = configMapData
-		updateErr := kubeClient.Update(context.TODO(), existingConfigMap)
-		//_, updateErr := kubeClient.CoreV1().ConfigMaps(app.Namespace).Update(context.TODO(), cm, metav1.UpdateOptions{})
+		_, updateErr := kubeClient.CoreV1().ConfigMaps(app.Namespace).Update(context.TODO(), cm, metav1.UpdateOptions{})
 		return updateErr
 	})
 	return createConfigMapErr

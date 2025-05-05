@@ -11,13 +11,13 @@ import (
 
 	"github.com/kubeflow/spark-operator/api/v1beta2"
 	"github.com/magiconair/properties"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Function to create Spark Application Configmap
 // Spark Application ConfigMap is pre-requisite for Driver Pod Creation; this configmap is mounted on driver pod
 // Spark Application ConfigMap acts as configuration repository for the Driver, executor pods
-func Create(app *v1beta2.SparkApplication, submissionID string, createdApplicationId string, kubeClient ctrlClient.Client, driverConfigMapName string, serviceName string) error {
+func Create(app *v1beta2.SparkApplication, submissionID string, createdApplicationId string, kubeClient *kubernetes.Clientset, driverConfigMapName string, serviceName string) error {
 	if app == nil {
 		return fmt.Errorf("spark application cannot be nil")
 	}

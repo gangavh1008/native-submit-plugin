@@ -14,12 +14,12 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Helper func to create Driver Pod of the Spark Application
-func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driverConfigMapName string, kubeClient ctrlClient.Client, appSpecVolumeMounts []apiv1.VolumeMount, appSpecVolumes []apiv1.Volume) error {
+func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driverConfigMapName string, kubeClient *kubernetes.Clientset, appSpecVolumeMounts []apiv1.VolumeMount, appSpecVolumes []apiv1.Volume) error {
 	if app == nil {
 		return fmt.Errorf("spark application cannot be nil")
 	}
@@ -265,11 +265,9 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	//Check existence of pod
 	createPodErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		existingDriverPod := &apiv1.Pod{}
-		err := kubeClient.Get(context.TODO(), ctrlClient.ObjectKeyFromObject(driverPod), existingDriverPod)
-		//driverPodExisting, err := kubeClient.CoreV1().Pods(app.Namespace).Get(context.TODO(), podObjectMetadata.Name, metav1.GetOptions{})
+		_, err := kubeClient.CoreV1().Pods(app.Namespace).Get(context.TODO(), podObjectMetadata.Name, metav1.GetOptions{})
 		if apiErrors.IsNotFound(err) {
-			createErr := kubeClient.Create(context.TODO(), driverPod)
-			//_, createErr := kubeClient.CoreV1().Pods(app.Namespace).Create(context.TODO(), driverPod, metav1.CreateOptions{})
+			_, createErr := kubeClient.CoreV1().Pods(app.Namespace).Create(context.TODO(), driverPod, metav1.CreateOptions{})
 
 			if createErr != nil {
 				return fmt.Errorf("error while creating driver pod: %w", createErr)
@@ -282,7 +280,7 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 		}
 		existingDriverPod.ObjectMeta = podObjectMetadata
 		existingDriverPod.Spec = driverPodSpec
-		updateErr := kubeClient.Update(context.TODO(), existingDriverPod)
+		_, updateErr := kubeClient.CoreV1().Pods(app.Namespace).Update(context.TODO(), existingDriverPod, metav1.UpdateOptions{})
 		if updateErr != nil {
 			return fmt.Errorf("error while updating driver pod: %w", updateErr)
 		}

@@ -14,12 +14,12 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Helper func to create Service for the Driver Pod of the Spark Application
-func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient ctrlClient.Client, createdApplicationId string, serviceName string) error {
+func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient *kubernetes.Clientset, createdApplicationId string, serviceName string) error {
 	if app == nil {
 		return fmt.Errorf("spark application cannot be nil")
 	}
@@ -105,11 +105,9 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 	//K8S API Server Call to create Service
 	createServiceErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		existingService := &apiv1.Service{}
-		err := kubeClient.Get(context.TODO(), ctrlClient.ObjectKeyFromObject(driverPodService), existingService)
-
+		_, err := kubeClient.CoreV1().Services(app.Namespace).Get(context.TODO(), driverPodService.Name, metav1.GetOptions{})
 		if apiErrors.IsNotFound(err) {
-			createErr := kubeClient.Create(context.TODO(), driverPodService)
-
+			_, createErr := kubeClient.CoreV1().Services(app.Namespace).Create(context.TODO(), driverPodService, metav1.CreateOptions{})
 			if createErr == nil {
 				return createAndCheckDriverService(kubeClient, app, driverPodService, 5, serviceName)
 			}
@@ -121,7 +119,8 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 		//Copying over the data to existing service
 		existingService.ObjectMeta = serviceObjectMetaData
 		existingService.Spec = driverPodService.Spec
-		updateErr := kubeClient.Update(context.TODO(), existingService)
+		//updateErr := kubeClient.Update(context.TODO(), existingService)
+		_, updateErr := kubeClient.CoreV1().Services(app.Namespace).Update(context.TODO(), existingService, metav1.UpdateOptions{})
 
 		if updateErr != nil {
 			return fmt.Errorf("error while updating driver service: %w", updateErr)
@@ -132,24 +131,21 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 	return createServiceErr
 }
 
-func createAndCheckDriverService(kubeClient ctrlClient.Client, app *v1beta2.SparkApplication, driverPodService *apiv1.Service, attemptCount int, serviceName string) error {
+func createAndCheckDriverService(kubeClient *kubernetes.Clientset, app *v1beta2.SparkApplication, driverPodService *apiv1.Service, attemptCount int, serviceName string) error {
 	const sleepDuration = 2000 * time.Millisecond
-	temp := &apiv1.Service{}
 
 	for iteration := 0; iteration < attemptCount; iteration++ {
-		err := kubeClient.Get(context.TODO(), ctrlClient.ObjectKey{
-			Namespace: driverPodService.Namespace,
-			Name:      driverPodService.Name,
-		}, temp)
+
+		_, err := kubeClient.CoreV1().Services(driverPodService.Namespace).Get(context.TODO(), driverPodService.Name, metav1.GetOptions{})
 
 		if apiErrors.IsNotFound(err) {
 			time.Sleep(sleepDuration)
 			glog.Info("Service does not exist, attempt #", iteration+2, " to create service for the app %s", app.Name)
 			driverPodService.ResourceVersion = ""
-
-			if dvrSvcErr := kubeClient.Create(context.TODO(), driverPodService); err != dvrSvcErr {
+			_, dvrSvcErr := kubeClient.CoreV1().Services(app.Namespace).Create(context.TODO(), driverPodService, metav1.CreateOptions{})
+			if dvrSvcErr != nil {
 				if !apiErrors.IsAlreadyExists(dvrSvcErr) {
-					return fmt.Errorf("Unable to create driver service : %w", dvrSvcErr)
+					return fmt.Errorf("unable to create driver service : %w", dvrSvcErr)
 				} else {
 					glog.Info("Driver service already exists, ignoring attempt to create it")
 				}

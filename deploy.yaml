@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: native-submit
+  namespace: spark-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: native-submit
+  template:
+    metadata:
+      labels:
+        app: native-submit
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: native-submit
+        image: ghcr.io/kubeflow/spark-operator/native-submit:local # Replace with your image
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NATIVE_SUBMIT_MODE
+          value: "rpc"
+        ports:
+        - containerPort: 12345
+      securityContext:
+        fsGroup: 185
+      serviceAccount: spark-operator-controller
+      serviceAccountName: spark-operator-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: native-submit
+  namespace: spark-operator
+spec:
+  selector:
+    app: native-submit
+  ports:
+  - protocol: TCP
+    port: 12345
+    targetPort: 12345 

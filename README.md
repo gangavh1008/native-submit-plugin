@@ -39,6 +39,45 @@ A high-performance alternative to `spark-submit` for launching Spark application
 ## Usage
 native-submit will be  plugin to spark operator.
 
+## Docker/RPC Mode
+
+You can also run Native Submit as a standalone RPC server in a Docker container. This exposes the `runAltSparkSubmit` method via Go's net/rpc over TCP.
+
+### Build Docker Image
+
+Create a Dockerfile in the project root with the following content:
+
+```Dockerfile
+FROM golang:1.21-alpine as builder
+WORKDIR /app
+COPY . .
+RUN go build -o native-submit ./main
+
+FROM alpine:3.18
+WORKDIR /app
+COPY --from=builder /app/native-submit .
+ENTRYPOINT ["/app/native-submit"]
+```
+
+Build the image:
+
+```bash
+docker build -t native-submit:latest .
+```
+
+### Run the RPC Server
+
+```bash
+docker run -e NATIVE_SUBMIT_MODE=rpc -p 12345:12345 native-submit:latest
+```
+
+### RPC API
+
+- Method: `RunAltSparkSubmit`
+- Request: `{ App: <JSON-encoded v1beta2.SparkApplication>, SubmissionID: <string> }`
+- Response: `{ Success: <bool>, Error: <string> }`
+
+You can use any Go net/rpc client to call this method. The server listens on TCP port 12345.
 
 ## Architecture
 

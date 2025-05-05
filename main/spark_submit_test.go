@@ -6,7 +6,6 @@ import (
 	"github.com/kubeflow/spark-operator/api/v1beta2"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestRunAltSparkSubmit(t *testing.T) {
@@ -45,8 +44,7 @@ func TestRunAltSparkSubmit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cl := fake.NewClientBuilder().Build()
-			success, err := runAltSparkSubmit(tt.app, tt.submissionID, cl)
+			success, err := runAltSparkSubmit(tt.app, tt.submissionID)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
