@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  native-submit-grpc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"  # gRPC port
+      - "8080:8080"    # Health check port
+    environment:
+      - GRPC_PORT=50051
+      - HEALTH_PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - spark-network
+
+  # Optional: Add a test client container
+  grpc-test-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-client
+    depends_on:
+      native-submit-grpc:
+        condition: service_healthy
+    environment:
+      - GRPC_SERVER=native-submit-grpc:50051
+    networks:
+      - spark-network
+    profiles:
+      - test
+
+networks:
+  spark-network:
+    driver: bridge 
