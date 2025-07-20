@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"nativesubmit/common"
 	"os"
@@ -20,25 +21,37 @@ import (
 
 // Helper func to create Driver Pod of the Spark Application
 func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driverConfigMapName string, kubeClient *kubernetes.Clientset, appSpecVolumeMounts []apiv1.VolumeMount, appSpecVolumes []apiv1.Volume) error {
+	log.Printf("=== Starting Driver Pod creation for app: %s, namespace: %s ===", app.Name, app.Namespace)
+	log.Printf("Driver ConfigMap name: %s", driverConfigMapName)
+	log.Printf("Service labels count: %d", len(serviceLabels))
+
 	if app == nil {
+		log.Printf("ERROR: Spark application is nil")
 		return fmt.Errorf("spark application cannot be nil")
 	}
+
 	//Load template file, if one supplied
 	var initialPod apiv1.Pod
 	var err error
 	driverPodtemplateFile, templateFileExists := app.Spec.SparkConf["spark.kubernetes.driver.podTemplateFile"]
 	if templateFileExists {
+		log.Printf("Pod template file specified: %s", driverPodtemplateFile)
 		podTemplateDriverContainerName := app.Spec.SparkConf["spark.kubernetes.driver.podTemplateContainerName"]
 		initialPod, err = loadPodFromTemplate(driverPodtemplateFile, podTemplateDriverContainerName, app.Spec.SparkConf)
 		if err != nil {
+			log.Printf("ERROR: Failed to load template file: %v", err)
 			return fmt.Errorf("failed to load template file for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, err)
-
 		}
+		log.Printf("Successfully loaded pod template")
 	}
+
 	//Driver pod spec instance
 	var driverPodSpec apiv1.PodSpec
 	if templateFileExists {
 		driverPodSpec = initialPod.Spec
+		log.Printf("Using pod spec from template")
+	} else {
+		log.Printf("Using default pod spec")
 	}
 
 	// Spark Application Driver Pod schema populating with specific values/data
@@ -52,7 +65,9 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	//Driver pod annotations
 	if app.Spec.Driver.Annotations != nil {
 		podObjectMetadata.Annotations = app.Spec.Driver.Annotations
+		log.Printf("Using driver annotations from spec")
 	} else {
+		log.Printf("No driver annotations in spec, checking sparkConf")
 		annotations := make(map[string]string)
 		for sparkConfKey, sparkConfValue := range app.Spec.SparkConf {
 			if strings.Contains(sparkConfKey, "spark.kubernetes.driver.annotation.") {
@@ -63,10 +78,12 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 		}
 		if len(annotations) > 0 {
 			podObjectMetadata.Annotations = annotations
+			log.Printf("Added %d annotations from sparkConf", len(annotations))
 		}
 	}
 	//Driver Pod Owner Reference
 	podObjectMetadata.OwnerReferences = []metav1.OwnerReference{*common.GetOwnerReference(app)}
+	log.Printf("Driver pod name: %s, namespace: %s", podObjectMetadata.Name, podObjectMetadata.Namespace)
 
 	//Driver pod DNS policy
 	driverPodSpec.DNSPolicy = SparkDriverDNSPolicy
@@ -292,6 +309,7 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 		return fmt.Errorf("failed to create/update driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, createPodErr)
 	}
 
+	log.Printf("=== Driver Pod creation successful for app: %s, namespace: %s ===", app.Name, app.Namespace)
 	return nil
 }
 

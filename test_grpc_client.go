@@ -35,8 +35,8 @@ func main() {
 			Namespace: "default",
 		},
 		Spec: &pb.SparkApplicationSpec{
-			Type: "Python",
-			Mode: "cluster",
+			Type: pb.SparkApplicationType_SPARK_APPLICATION_TYPE_PYTHON,
+			Mode: pb.DeployMode_DEPLOY_MODE_CLUSTER,
 		},
 	}
 

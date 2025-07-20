@@ -23,7 +23,6 @@ message SparkApplicationSpec {
   google.protobuf.StringValue main_class = 11;
   google.protobuf.StringValue main_application_file = 12;
   google.protobuf.StringValue proxy_user = 13;
-  map<string, string> node_selector = 14;
   google.protobuf.Int32Value failure_retries = 15;
   google.protobuf.Int64Value retry_interval = 16;
   google.protobuf.StringValue memory_overhead_factor = 17;
@@ -38,10 +37,9 @@ message SparkApplicationSpec {
   DynamicAllocation dynamic_allocation = 26;
   string python_version = 27;
   string spark_version = 28;
-  map<string, string> node_selector = 29;
-  RestartPolicy restart_policy = 30;
-  SparkUIConfiguration spark_ui_configuration = 31;
-  repeated DriverIngressConfiguration driver_ingress_configuration = 32;
+  RestartPolicy restart_policy = 29;
+  SparkUIConfiguration spark_ui_configuration = 30;
+  repeated DriverIngressConfiguration driver_ingress_configuration = 31;
 
   // Add more fields as needed
 }
@@ -66,8 +64,13 @@ message ObjectMeta {
 }
 
 enum ManagedFieldsOperationType {
+  MANAGED_FIELDS_OPERATION_TYPE_UNSPECIFIED = 0;
   MANAGED_FIELDS_OPERATION_TYPE_APPLY = 1;
   MANAGED_FIELDS_OPERATION_TYPE_UPDATE = 2;
+}
+
+message FieldsV1 {
+  string raw = 1;
 }
 
 message ManagedFieldsEntry {
@@ -90,19 +93,21 @@ message OwnerReference {
 }
 
 enum SparkApplicationType {
+  SPARK_APPLICATION_TYPE_UNSPECIFIED = 0;
   SPARK_APPLICATION_TYPE_JAVA = 1;
   SPARK_APPLICATION_TYPE_SCALA = 2;
   SPARK_APPLICATION_TYPE_PYTHON = 3;
   SPARK_APPLICATION_TYPE_R = 4;
 }
 enum DeployMode {
+  DEPLOY_MODE_UNSPECIFIED = 0;
   DEPLOY_MODE_CLUSTER = 1;
   DEPLOY_MODE_CLIENT = 2;
   DEPLOY_MODE_IN_CLUSTER_CLIENT = 3;
 }
 message DriverIngressConfiguration {
   google.protobuf.Int32Value service_port = 1;
-  google.protobuf.string service_port_name = 2;
+  google.protobuf.StringValue service_port_name = 2;
   ServiceType service_type = 3;
   map<string, string> service_annotations = 4;
   map<string, string> service_labels = 5;
@@ -113,7 +118,7 @@ message DriverIngressConfiguration {
 }
 message SparkUIConfiguration {
   google.protobuf.Int32Value service_port = 1;
-  google.protobuf.string service_port_name = 2;
+  google.protobuf.StringValue service_port_name = 2;
   ServiceType service_type = 3;
   map<string, string> service_annotations = 4;
   map<string, string> service_labels = 5;
@@ -125,6 +130,7 @@ message IngressTLS {
   string secret_name = 2;
 }
 enum ServiceType {
+  SERVICE_TYPE_UNSPECIFIED = 0;
   SERVICE_TYPE_CLUSTER_IP = 1;
   SERVICE_TYPE_NODE_PORT = 2;
   SERVICE_TYPE_LOAD_BALANCER = 3;
@@ -141,7 +147,7 @@ message MonitoringSpec {
   bool expose_executor_metrics = 2;
   google.protobuf.StringValue metrics_properties = 3;
   google.protobuf.StringValue metrics_properties_file = 4;
-  PrometheusSpec prometheus = 4;
+  PrometheusSpec prometheus = 5;
 
 }
 message PrometheusSpec {
@@ -210,6 +216,7 @@ message PodTemplateSpec {
 }
 
 enum DNSPolicy {
+  DNS_POLICY_UNSPECIFIED = 0;
   DNS_POLICY_CLUSTER_FIRST_WITH_HOST_NET = 1;
   DNS_POLICY_CLUSTER_FIRST = 2;
   DNS_POLICY_DEFAULT = 3;
@@ -246,7 +253,7 @@ message PodSpec {
   repeated PodReadinessGate readiness_gates = 28;
   google.protobuf.StringValue runtime_class_name = 29;
   google.protobuf.BoolValue enable_service_links = 30;
-  map<string, quantity> overhead = 31;
+  map<string, Quantity> overhead = 31;
   repeated TopologySpreadConstraint topology_spread_constraints = 32;
   google.protobuf.BoolValue set_host_name_as_fqdn = 33;
   PodOS os = 34;
@@ -287,6 +294,7 @@ message PodReadinessGate {
   PodConditionType condition_type = 1;
 }
 enum PodConditionType {
+  POD_CONDITION_TYPE_UNSPECIFIED = 0;
   POD_CONDITION_TYPE_CONTAINERS_READY = 1;
   POD_CONDITION_TYPE_INITIALIZED = 2;
   POD_CONDITION_TYPE_READY = 3;
@@ -307,11 +315,13 @@ message TopologySpreadConstraint {
 }
 
 enum UnsatisfiableConstraintAction{
+  UNSATISFIABLE_CONSTRAINT_ACTION_UNSPECIFIED = 0;
   UNSATISFIABLE_CONSTRAINT_ACTION_DO_NOT_SCHEDULE = 1;
   UNSATISFIABLE_CONSTRAINT_ACTION_SCHEDULE_ANYWAY = 2;
 }
 
 enum NodeInclusionPolicy {
+  NODE_INCLUSION_POLICY_UNSPECIFIED = 0;
   NODE_INCLUSION_POLCIY_IGNORE = 1;
   NODE_INCLUSION_POLCIY_HONOR = 2;
 }
@@ -350,6 +360,7 @@ message SecretInfo {
   SecretType type = 3;
 }
 enum SecretType {
+  SECRET_TYPE_UNSPECIFIED = 0;
   SECRET_TYPE_GCP_SERVICE_ACCOUNT = 1;
   SECRET_TYPE_HADOOP_DELEGATION_TOKEN = 2;
   SECRET_TYPE_GENERIC = 3;
@@ -396,6 +407,7 @@ message LabelSelectorRequirement {
 }
 
 enum LabelSelectorOperator {
+  LABEL_SELECTOR_OPERATOR_UNSPECIFIED = 0;
   LABEL_SELECTOR_OPERATOR_IN = 1;
   LABEL_SELECTOR_OPERATOR_NOT_IN = 2;
   LABEL_SELECTOR_OPERATOR_EXISTS = 3;
@@ -428,6 +440,7 @@ message NodeSelectorRequirement {
 }
 
 enum NodeSelectorOperator {
+  NODE_SELECTOR_OPERATOR_UNSPECIFIED = 0;
   NODE_SELECTOR_OPERATOR_IN = 1;
   NODE_SELECTOR_OPERATOR_NOT_IN = 2;
   NODE_SELECTOR_OPERATOR_EXISTS = 3;
@@ -444,14 +457,16 @@ message Toleration {
   google.protobuf.Int64Value toleration_seconds = 5;
 }
 enum TaintEffect {
+  TAINT_EFFECT_UNSPECIFIED = 0;
   TAINT_EFFECT_NO_SCHEDULE = 1;
   TAINT_EFFECT_PREFER_NO_SCHEDULE = 2;
   TAINT_EFFECT_NO_SCHEDULE_NO_ADMIT = 3;
   TAINT_EFFECT_NO_EXECUTE = 4;
 }
 enum TolerationOperator {
-  TOLERATION_OPERATOR_EXISTS = "1";
-  TOLERATION_OPERATOR_EQUAL = "2";
+  TOLERATION_OPERATOR_UNSPECIFIED = 0;
+  TOLERATION_OPERATOR_EXISTS = 1;
+  TOLERATION_OPERATOR_EQUAL = 2;
 }
 
 
@@ -470,8 +485,9 @@ message PodSecurityContext {
 
 
 enum PodFSGroupChangePolicy {
- POD_FS_GROUP_CHANGE_POLICY_ON_ROOT_MISMATCH = "1" ;
- POD_FS_GROUP_CHANGE_POLICY_ALWAYS = "2";
+ POD_FS_GROUP_CHANGE_POLICY_UNSPECIFIED = 0;
+ POD_FS_GROUP_CHANGE_POLICY_ON_ROOT_MISMATCH = 1;
+ POD_FS_GROUP_CHANGE_POLICY_ALWAYS = 2;
 }
 
 message Sysctl {
@@ -515,10 +531,16 @@ message ContainerPort {
 }
 
 enum Protocol {
-  PROTOCOL_TCP = "1";
-  PROTOCOL_UDP = "2";
-  PROTOCOL_SCTP = "3";
+  PROTOCOL_UNSPECIFIED = 0;
+  PROTOCOL_TCP = 1;
+  PROTOCOL_UDP = 2;
+  PROTOCOL_SCTP = 3;
 
+}
+
+message ConfigMapEnvSource {
+  LocalObjectReference local_object_reference = 1;
+  google.protobuf.BoolValue optional = 2;
 }
 
 message EnvFromSource {
@@ -621,12 +643,14 @@ message ContainerResizePolicy {
   ResourceResizeRestartPolicy restart_policy = 2;
 }
 enum ResourceResizeRestartPolicy {
+  RESOURCE_RESIZE_RESTART_POLICY_UNSPECIFIED = 0;
   RESOURCE_RESIZE_RESTART_POLICY_NOT_REQUIRED = 1;
   RESOURCE_RESIZE_RESTART_POLICY_RESTART_CONTAINER = 2;
 }
 
 
 enum ContainerRestartPolicy {
+  CONTAINER_RESTART_POLICY_UNSPECIFIED = 0;
   CONTAINER_RESTART_POLICY_ALWAYS = 1;
 }
 message VolumeDevice {
@@ -634,6 +658,12 @@ message VolumeDevice {
   string device_path = 2;
 
 }
+message ProbeHandler {
+  ExecAction exec = 1;
+  HTTPGetAction http_get = 2;
+  TCPSocketAction tcp_socket = 3;
+}
+
 message Probe {
   ProbeHandler probe_handler = 1;
   int32 initial_delay_seconds = 2;
@@ -645,10 +675,12 @@ message Probe {
 
 }
 enum TerminationMessagePolicy {
+  TERMINATION_MESSAGE_POLICY_UNSPECIFIED = 0;
   TERMINATION_MESSAGE_POLICY_FILE = 1;
   TERMINATION_MESSAGE_FALLBACK_TO_LOGS_ON_ERROR = 2;
 }
 enum PullPolicy {
+   PULL_POLICY_UNSPECIFIED = 0;
   PULL_POLICY_ALWAYS = 1;
   PULL_POLICY_NEVER = 2;
   PULL_POLICY_IF_NOT_PRESENT = 3;

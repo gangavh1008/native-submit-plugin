@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"nativesubmit/common"
 	"strconv"
 	"strings"
@@ -20,7 +21,12 @@ import (
 
 // Helper func to create Service for the Driver Pod of the Spark Application
 func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient *kubernetes.Clientset, createdApplicationId string, serviceName string) error {
+	log.Printf("=== Starting Driver Service creation for app: %s, namespace: %s ===", app.Name, app.Namespace)
+	log.Printf("Service name: %s, Application ID: %s", serviceName, createdApplicationId)
+	log.Printf("Service selector labels count: %d", len(serviceSelectorLabels))
+
 	if app == nil {
+		log.Printf("ERROR: Spark application is nil")
 		return fmt.Errorf("spark application cannot be nil")
 	}
 
@@ -37,14 +43,17 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 	serviceObjectMetaData.OwnerReferences = []metav1.OwnerReference{*common.GetOwnerReference(app)}
 	//Service Schema label
 	serviceLabels := map[string]string{SparkApplicationSelectorLabel: createdApplicationId}
+	log.Printf("Service object metadata - Name: %s, Namespace: %s", serviceObjectMetaData.Name, serviceObjectMetaData.Namespace)
 
 	ipFamilyString, ipFamilyExists := app.Spec.SparkConf["spark.kubernetes.driver.service.ipFamilies"]
 	var ipFamily apiv1.IPFamily
 	if ipFamilyExists {
 		ipFamily = apiv1.IPFamily(ipFamilyString)
+		log.Printf("Using IP family from sparkConf: %s", ipFamilyString)
 	} else {
 		//Default Value
 		ipFamily = apiv1.IPFamily("IPv4")
+		log.Printf("Using default IP family: IPv4")
 	}
 	var ipFamilies [1]apiv1.IPFamily
 	ipFamilies[0] = ipFamily
@@ -59,12 +68,15 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 			serviceLabels[labelKey] = labelValue
 		}
 	}
+	log.Printf("Service labels count after sparkConf processing: %d", len(serviceLabels))
 
 	serviceObjectMetaData.Labels = serviceLabels
 	//Service Schema Annotation
 	if app.Spec.Driver.Annotations != nil {
 		serviceObjectMetaData.Annotations = app.Spec.Driver.Annotations
+		log.Printf("Using driver annotations for service")
 	}
+
 	//Service Schema Creation
 	driverPodService := &apiv1.Service{
 		ObjectMeta: serviceObjectMetaData,
@@ -102,20 +114,29 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 			IPFamilies:      ipFamilies[:],
 		},
 	}
+	log.Printf("Driver service object created with %d ports", len(driverPodService.Spec.Ports))
+
 	//K8S API Server Call to create Service
+	log.Printf("Attempting to create/update driver service...")
 	createServiceErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		existingService := &apiv1.Service{}
 		_, err := kubeClient.CoreV1().Services(app.Namespace).Get(context.TODO(), driverPodService.Name, metav1.GetOptions{})
 		if apiErrors.IsNotFound(err) {
+			log.Printf("Service not found, creating new one...")
 			_, createErr := kubeClient.CoreV1().Services(app.Namespace).Create(context.TODO(), driverPodService, metav1.CreateOptions{})
 			if createErr == nil {
+				log.Printf("Service created successfully, checking service availability...")
 				return createAndCheckDriverService(kubeClient, app, driverPodService, 5, serviceName)
 			}
+			log.Printf("ERROR: Failed to create service: %v", createErr)
+			return createErr
 		}
 		if err != nil {
+			log.Printf("ERROR: Failed to get existing service: %v", err)
 			return err
 		}
 
+		log.Printf("Service exists, updating...")
 		//Copying over the data to existing service
 		existingService.ObjectMeta = serviceObjectMetaData
 		existingService.Spec = driverPodService.Spec
@@ -123,11 +144,19 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 		_, updateErr := kubeClient.CoreV1().Services(app.Namespace).Update(context.TODO(), existingService, metav1.UpdateOptions{})
 
 		if updateErr != nil {
+			log.Printf("ERROR: Failed to update service: %v", updateErr)
 			return fmt.Errorf("error while updating driver service: %w", updateErr)
 		}
-
+		log.Printf("Service updated successfully")
 		return updateErr
 	})
+
+	if createServiceErr != nil {
+		log.Printf("ERROR: Final service creation/update failed: %v", createServiceErr)
+	} else {
+		log.Printf("=== Successfully completed Driver Service creation ===")
+	}
+
 	return createServiceErr
 }
 

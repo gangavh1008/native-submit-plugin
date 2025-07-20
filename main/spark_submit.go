@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 	"nativesubmit/common"
 	"nativesubmit/internal/configmap"
 	"nativesubmit/internal/driver"
@@ -53,25 +54,33 @@ const (
 // 3 Resources are created in this logic per new Spark Application, in the order listed: ConfigMap for the Spark Application, Driver Pod, Driver Service
 
 func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string) (bool, error) {
+	log.Printf("=== Starting Spark Application submission process ===")
+	log.Printf("App name: %s, Namespace: %s, Submission ID: %s", app.Name, app.Namespace, submissionID)
+
 	kubeClient := getKubeClientOrDie()
 	if app == nil {
+		log.Printf("ERROR: Spark application is nil")
 		return false, fmt.Errorf("spark application cannot be nil")
 	}
 
 	appSpecVolumeMounts := app.Spec.Driver.VolumeMounts
 	appSpecVolumes := app.Spec.Volumes
+	log.Printf("App spec volume mounts: %d, volumes: %d", len(appSpecVolumeMounts), len(appSpecVolumes))
 
 	// Create Application ID with the convention followed in Scala/Java
 	uuidString := strings.ReplaceAll(uuid.New().String(), "-", "")
 	createdApplicationId := fmt.Sprintf("%s-%s", Spark, uuidString)
+	log.Printf("Generated Application ID: %s", createdApplicationId)
 
 	//Update Application CRD Instance with Spark Application ID
 	app.Status.SparkApplicationID = createdApplicationId
 
 	//Create Spark Application ConfigMap Name with the convention followed in Scala/Java
 	driverConfigMapName := fmt.Sprintf("%s%s", common.GetDriverPodName(app), ConfigMapExtension)
+	log.Printf("Driver ConfigMap name: %s", driverConfigMapName)
 
 	serviceName := getServiceName(app)
+	log.Printf("Service name: %s", serviceName)
 
 	//Update Application CRD Instance with Submission ID
 	app.Status.SubmissionID = submissionID
@@ -85,6 +94,7 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string) (bool
 		SparkAppSubmissionIDAnnotation: submissionID,
 		SparkAppLauncherSOAnnotation:   True,
 	}
+	log.Printf("Created base service labels: %v", getMapKeys(serviceLabels))
 
 	if app.Spec.Driver.Labels != nil {
 		if version, exists := app.Spec.Driver.Labels[Version]; exists {
@@ -93,12 +103,14 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string) (bool
 		for key, val := range app.Spec.Driver.Labels {
 			serviceLabels[key] = val
 		}
+		log.Printf("Added driver labels: %d entries", len(app.Spec.Driver.Labels))
 	}
 
 	if app.Labels != nil {
 		for key, val := range app.Labels {
 			serviceLabels[key] = val
 		}
+		log.Printf("Added app labels: %d entries", len(app.Labels))
 	}
 
 	// labels passed in sparkConf
@@ -110,25 +122,46 @@ func runAltSparkSubmit(app *v1beta2.SparkApplication, submissionID string) (bool
 			serviceLabels[labelKey] = sparkConfValue
 		}
 	}
+	log.Printf("Final service labels count: %d", len(serviceLabels))
 
 	//Spark Application ConfigMap Creation
+	log.Printf("=== Step 1: Creating ConfigMap ===")
 	createErr := configmap.Create(app, submissionID, createdApplicationId, kubeClient, driverConfigMapName, serviceName)
 	if createErr != nil {
+		log.Printf("ERROR: ConfigMap creation failed: %v", createErr)
 		return false, fmt.Errorf("error while creating configmap %s in namespace %s: %w", driverConfigMapName, app.Namespace, createErr)
 	}
+	log.Printf("ConfigMap creation completed successfully")
 
 	//Spark Application Driver Pod Creation
+	log.Printf("=== Step 2: Creating Driver Pod ===")
 	createPodErr := driver.Create(app, serviceLabels, driverConfigMapName, kubeClient, appSpecVolumeMounts, appSpecVolumes)
 	if createPodErr != nil {
+		log.Printf("ERROR: Driver pod creation failed: %v", createPodErr)
 		return false, fmt.Errorf("error while creating driver pod %s in namespace %s: %w", common.GetDriverPodName(app), app.Namespace, createPodErr)
 	}
+	log.Printf("Driver pod creation completed successfully")
 
 	//Spark Application Driver Pod's Service Creation
+	log.Printf("=== Step 3: Creating Driver Service ===")
 	createServiceErr := service.Create(app, serviceLabels, kubeClient, createdApplicationId, serviceName)
 	if createServiceErr != nil {
+		log.Printf("ERROR: Driver service creation failed: %v", createServiceErr)
 		return false, fmt.Errorf("error while creating driver service %s in namespace %s: %w", serviceName, app.Namespace, createServiceErr)
 	}
+	log.Printf("Driver service creation completed successfully")
+
+	log.Printf("=== Spark Application submission process completed successfully ===")
 	return true, nil
+}
+
+// Helper function to get map keys for logging
+func getMapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // getServiceName Helper function to get Spark Application Driver Pod's Service Name

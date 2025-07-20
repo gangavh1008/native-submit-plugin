@@ -37,11 +37,11 @@ RUN chown spark:spark /app/native-submit
 USER spark
 
 # Expose ports
-EXPOSE 50051 8080
+EXPOSE 50051 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:9090/healthz || exit 1
 
 # Run the binary
 ENTRYPOINT ["/app/native-submit"] 

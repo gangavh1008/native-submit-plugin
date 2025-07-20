@@ -5,8 +5,10 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/kubeflow/spark-operator/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func Int32Pointer(a int32) *int32 {
@@ -67,11 +69,19 @@ func GetDriverPort(sparkConfKeyValuePairs map[string]string) int {
 // Helper func to get Owner references to be added to Spark Application resources - pod, service, configmap
 func GetOwnerReference(app *v1beta2.SparkApplication) *metav1.OwnerReference {
 	controller := false
+
+	// Ensure UID is not empty
+	uid := app.ObjectMeta.UID
+	if uid == "" {
+		// Generate a UID if not present
+		uid = types.UID(uuid.New().String())
+	}
+
 	return &metav1.OwnerReference{
 		APIVersion: v1beta2.SchemeGroupVersion.String(),
 		Kind:       reflect.TypeOf(v1beta2.SparkApplication{}).Name(),
 		Name:       app.Name,
-		UID:        app.UID,
+		UID:        uid,
 		Controller: &controller,
 	}
 }
