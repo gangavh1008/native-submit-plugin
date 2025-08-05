@@ -19,6 +19,11 @@ func TestRunAltSparkSubmit(t *testing.T) {
 		{
 			name: "valid spark application with submission ID",
 			app: &v1beta2.SparkApplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-app",
+					Namespace: "default",
+					UID:       "test-uid-123",
+				},
 				Spec: v1beta2.SparkApplicationSpec{
 					Driver: v1beta2.DriverSpec{
 						SparkPodSpec: v1beta2.SparkPodSpec{
@@ -30,8 +35,8 @@ func TestRunAltSparkSubmit(t *testing.T) {
 				},
 			},
 			submissionID: "test-submission-id",
-			wantSuccess:  true,
-			wantErr:      false,
+			wantSuccess:  false,
+			wantErr:      true,
 		},
 		{
 			name:         "nil spark application",

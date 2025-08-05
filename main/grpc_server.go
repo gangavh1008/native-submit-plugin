@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/kubeflow/spark-operator/api/v1beta2"
 	"google.golang.org/grpc"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
+	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -81,10 +83,168 @@ func convertProtoToSparkApplication(protoApp *pb.SparkApplication) *v1beta2.Spar
 		return nil
 	}
 
+	// Helper function to convert wrapper to bool pointer
+	getBoolPtr := func(wrapper *wrapperspb.BoolValue) *bool {
+		if wrapper != nil {
+			val := wrapper.GetValue()
+			return &val
+		}
+		return nil
+	}
+
 	// Ensure UID is not empty - generate one if needed
 	uid := protoApp.GetMetadata().GetUid()
 	if uid == "" {
 		uid = uuid.New().String()
+	}
+
+	// Helper function to convert proto Volume to apiv1.Volume
+	convertVolume := func(protoVol *pb.Volume) apiv1.Volume {
+		if protoVol == nil {
+			return apiv1.Volume{}
+		}
+		return apiv1.Volume{
+			Name: protoVol.GetName(),
+			// Note: This is a simplified conversion. You may need to handle different volume types
+			// based on the protoVol.GetType() value
+		}
+	}
+
+	// Helper function to convert proto VolumeMount to apiv1.VolumeMount
+	convertVolumeMount := func(protoVolMount *pb.VolumeMount) apiv1.VolumeMount {
+		if protoVolMount == nil {
+			return apiv1.VolumeMount{}
+		}
+		return apiv1.VolumeMount{
+			Name:      protoVolMount.GetName(),
+			MountPath: protoVolMount.GetMountPath(),
+			ReadOnly:  protoVolMount.GetReadOnly(),
+		}
+	}
+
+	// Helper function to convert proto EnvVar to apiv1.EnvVar
+	convertEnvVar := func(protoEnvVar *pb.EnvVar) apiv1.EnvVar {
+		if protoEnvVar == nil {
+			return apiv1.EnvVar{}
+		}
+		return apiv1.EnvVar{
+			Name:  protoEnvVar.GetName(),
+			Value: protoEnvVar.GetValue(),
+			// Note: ValueFrom conversion would need additional logic for complex field references
+		}
+	}
+
+	// Helper function to convert proto Container to apiv1.Container
+	convertContainer := func(protoContainer *pb.Container) apiv1.Container {
+		if protoContainer == nil {
+			return apiv1.Container{}
+		}
+
+		container := apiv1.Container{
+			Name:  protoContainer.GetName(),
+			Image: protoContainer.GetImage(),
+		}
+
+		// Convert command and args
+		if len(protoContainer.GetCommand()) > 0 {
+			container.Command = protoContainer.GetCommand()
+		}
+		if len(protoContainer.GetArgs()) > 0 {
+			container.Args = protoContainer.GetArgs()
+		}
+
+		// Convert env vars
+		for _, envVar := range protoContainer.GetEnv() {
+			container.Env = append(container.Env, convertEnvVar(envVar))
+		}
+
+		// Convert volume mounts
+		for _, volMount := range protoContainer.GetVolumeMounts() {
+			container.VolumeMounts = append(container.VolumeMounts, convertVolumeMount(volMount))
+		}
+
+		return container
+	}
+
+	// Helper function to convert proto SparkPodSpec to v1beta2.SparkPodSpec
+	convertSparkPodSpec := func(protoPodSpec *pb.SparkPodSpec) v1beta2.SparkPodSpec {
+		if protoPodSpec == nil {
+			return v1beta2.SparkPodSpec{}
+		}
+
+		podSpec := v1beta2.SparkPodSpec{
+			Cores:                 getInt32Ptr(protoPodSpec.GetCores()),
+			Labels:                protoPodSpec.GetLabels(),
+			Annotations:           protoPodSpec.GetAnnotations(),
+			NodeSelector:          protoPodSpec.GetNodeSelector(),
+			SchedulerName:         getStringPtr(protoPodSpec.GetSchedulerName()),
+			ServiceAccount:        getStringPtr(protoPodSpec.GetServiceAccount()),
+			HostNetwork:           getBoolPtr(protoPodSpec.GetHostNetwork()),
+			ShareProcessNamespace: getBoolPtr(protoPodSpec.GetShareProcessNamespace()),
+		}
+
+		// Convert env vars
+		for _, envVar := range protoPodSpec.GetEnv() {
+			podSpec.Env = append(podSpec.Env, convertEnvVar(envVar))
+		}
+
+		// Convert volume mounts
+		for _, volMount := range protoPodSpec.GetVolumeMounts() {
+			podSpec.VolumeMounts = append(podSpec.VolumeMounts, convertVolumeMount(volMount))
+		}
+
+		// Convert containers
+		for _, container := range protoPodSpec.GetSidecars() {
+			podSpec.Sidecars = append(podSpec.Sidecars, convertContainer(container))
+		}
+
+		for _, container := range protoPodSpec.GetInitContainers() {
+			podSpec.InitContainers = append(podSpec.InitContainers, convertContainer(container))
+		}
+
+		return podSpec
+	}
+
+	// Helper function to convert string to int32
+	stringToInt32 := func(s string) int32 {
+		if s == "" {
+			return 0
+		}
+		// Simple conversion - in production you might want more robust parsing
+		var result int32
+		_, err := fmt.Sscanf(s, "%d", &result)
+		if err != nil {
+			return 0
+		}
+		return result
+	}
+
+	// Helper function to convert proto PrometheusSpec to v1beta2.PrometheusSpec
+	convertPrometheusSpec := func(protoPrometheus *pb.PrometheusSpec) *v1beta2.PrometheusSpec {
+		if protoPrometheus == nil {
+			return nil
+		}
+		return &v1beta2.PrometheusSpec{
+			JmxExporterJar: protoPrometheus.GetJmxExporterJar(),
+			Port:           getInt32Ptr(protoPrometheus.GetPort()),
+			PortName:       getStringPtr(protoPrometheus.GetPortName()),
+			ConfigFile:     getStringPtr(protoPrometheus.GetConfigFile()),
+			Configuration:  getStringPtr(protoPrometheus.GetConfiguration()),
+		}
+	}
+
+	// Helper function to convert proto MonitoringSpec to v1beta2.MonitoringSpec
+	convertMonitoringSpec := func(protoMonitoring *pb.MonitoringSpec) *v1beta2.MonitoringSpec {
+		if protoMonitoring == nil {
+			return nil
+		}
+		return &v1beta2.MonitoringSpec{
+			ExposeDriverMetrics:   protoMonitoring.GetExposeDriverMetrics(),
+			ExposeExecutorMetrics: protoMonitoring.GetExposeExecutorMetrics(),
+			MetricsProperties:     getStringPtr(protoMonitoring.GetMetricsProperties()),
+			MetricsPropertiesFile: getStringPtr(protoMonitoring.GetMetricsPropertiesFile()),
+			Prometheus:            convertPrometheusSpec(protoMonitoring.GetPrometheus()),
+		}
 	}
 
 	app := &v1beta2.SparkApplication{
@@ -153,6 +313,90 @@ func convertProtoToSparkApplication(protoApp *pb.SparkApplication) *v1beta2.Spar
 		app.Spec.RestartPolicy = v1beta2.RestartPolicy{
 			Type: v1beta2.RestartPolicyType(restartPolicy.GetType()),
 		}
+	}
+
+	// Handle MonitoringSpec
+	if monitoring := protoApp.GetSpec().GetMonitoring(); monitoring != nil {
+		app.Spec.Monitoring = convertMonitoringSpec(monitoring)
+	}
+
+	// Handle DriverSpec
+	if driverSpec := protoApp.GetSpec().GetDriver(); driverSpec != nil {
+		app.Spec.Driver = v1beta2.DriverSpec{
+			SparkPodSpec: convertSparkPodSpec(driverSpec.GetSparkPodSpec()),
+		}
+
+		// Convert additional driver-specific fields
+		if driverSpec.GetPodName() != nil {
+			app.Spec.Driver.PodName = getStringPtr(driverSpec.GetPodName())
+		}
+		if driverSpec.GetCoreRequest() != nil {
+			app.Spec.Driver.CoreRequest = getStringPtr(driverSpec.GetCoreRequest())
+		}
+		if driverSpec.GetJavaOptions() != nil {
+			app.Spec.Driver.JavaOptions = getStringPtr(driverSpec.GetJavaOptions())
+		}
+		if driverSpec.GetKubernetesMaster() != nil {
+			app.Spec.Driver.KubernetesMaster = getStringPtr(driverSpec.GetKubernetesMaster())
+		}
+		if driverSpec.GetPriorityClassName() != nil {
+			app.Spec.Driver.PriorityClassName = getStringPtr(driverSpec.GetPriorityClassName())
+		}
+
+		// Convert service annotations and labels
+		if len(driverSpec.GetServiceAnnotations()) > 0 {
+			app.Spec.Driver.ServiceAnnotations = driverSpec.GetServiceAnnotations()
+		}
+		if len(driverSpec.GetServiceLabels()) > 0 {
+			app.Spec.Driver.ServiceLabels = driverSpec.GetServiceLabels()
+		}
+
+		// Convert ports
+		for _, port := range driverSpec.GetPorts() {
+			app.Spec.Driver.Ports = append(app.Spec.Driver.Ports, v1beta2.Port{
+				Name:          port.GetName(),
+				Protocol:      port.GetProtocol(),
+				ContainerPort: stringToInt32(port.GetContainerPort()),
+			})
+		}
+	}
+
+	// Handle ExecutorSpec
+	if executorSpec := protoApp.GetSpec().GetExecutor(); executorSpec != nil {
+		app.Spec.Executor = v1beta2.ExecutorSpec{
+			SparkPodSpec: convertSparkPodSpec(executorSpec.GetSparkPodSpec()),
+		}
+
+		// Convert additional executor-specific fields
+		if executorSpec.GetInstances() != nil {
+			app.Spec.Executor.Instances = getInt32Ptr(executorSpec.GetInstances())
+		}
+		if executorSpec.GetCoreRequest() != nil {
+			app.Spec.Executor.CoreRequest = getStringPtr(executorSpec.GetCoreRequest())
+		}
+		if executorSpec.GetJavaOptions() != nil {
+			app.Spec.Executor.JavaOptions = getStringPtr(executorSpec.GetJavaOptions())
+		}
+		if executorSpec.GetDeleteOnTermination() != nil {
+			app.Spec.Executor.DeleteOnTermination = getBoolPtr(executorSpec.GetDeleteOnTermination())
+		}
+		if executorSpec.GetPriorityClassName() != nil {
+			app.Spec.Executor.PriorityClassName = getStringPtr(executorSpec.GetPriorityClassName())
+		}
+
+		// Convert ports
+		for _, port := range executorSpec.GetPorts() {
+			app.Spec.Executor.Ports = append(app.Spec.Executor.Ports, v1beta2.Port{
+				Name:          port.GetName(),
+				Protocol:      port.GetProtocol(),
+				ContainerPort: stringToInt32(port.GetContainerPort()),
+			})
+		}
+	}
+
+	// Handle Volumes
+	for _, volume := range protoApp.GetSpec().GetVolumes() {
+		app.Spec.Volumes = append(app.Spec.Volumes, convertVolume(volume))
 	}
 
 	return app

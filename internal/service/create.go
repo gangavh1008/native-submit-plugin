@@ -20,9 +20,9 @@ import (
 )
 
 // Helper func to create Service for the Driver Pod of the Spark Application
-func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient *kubernetes.Clientset, createdApplicationId string, serviceName string) error {
+func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]string, kubeClient *kubernetes.Clientset, createdApplicationId string, serviceName string, driverPodUID string) error {
 	log.Printf("=== Starting Driver Service creation for app: %s, namespace: %s ===", app.Name, app.Namespace)
-	log.Printf("Service name: %s, Application ID: %s", serviceName, createdApplicationId)
+	log.Printf("Service name: %s, Application ID: %s, Driver Pod UID: %s", serviceName, createdApplicationId, driverPodUID)
 	log.Printf("Service selector labels count: %d", len(serviceSelectorLabels))
 
 	if app == nil {
@@ -33,30 +33,15 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 	//Service Schema populating with specific values/data
 	var serviceObjectMetaData metav1.ObjectMeta
 
-	serviceObjectMetaData.ResourceVersion = ""
-
 	//Driver Pod Service name
 	serviceObjectMetaData.Name = serviceName
 	// Spark Application Namespace
 	serviceObjectMetaData.Namespace = common.GetAppNamespace(app)
-	// Service Schema Owner References
-	serviceObjectMetaData.OwnerReferences = []metav1.OwnerReference{*common.GetOwnerReference(app)}
+	// Service Schema Owner References - Use service-specific owner reference for proper garbage collection protection
+	serviceObjectMetaData.OwnerReferences = []metav1.OwnerReference{*common.GetServiceOwnerReference(app, driverPodUID)}
 	//Service Schema label
 	serviceLabels := map[string]string{SparkApplicationSelectorLabel: createdApplicationId}
 	log.Printf("Service object metadata - Name: %s, Namespace: %s", serviceObjectMetaData.Name, serviceObjectMetaData.Namespace)
-
-	ipFamilyString, ipFamilyExists := app.Spec.SparkConf["spark.kubernetes.driver.service.ipFamilies"]
-	var ipFamily apiv1.IPFamily
-	if ipFamilyExists {
-		ipFamily = apiv1.IPFamily(ipFamilyString)
-		log.Printf("Using IP family from sparkConf: %s", ipFamilyString)
-	} else {
-		//Default Value
-		ipFamily = apiv1.IPFamily("IPv4")
-		log.Printf("Using default IP family: IPv4")
-	}
-	var ipFamilies [1]apiv1.IPFamily
-	ipFamilies[0] = ipFamily
 
 	// labels passed in sparkConf
 	sparkConfKeyValuePairs := app.Spec.SparkConf
@@ -71,11 +56,24 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 	log.Printf("Service labels count after sparkConf processing: %d", len(serviceLabels))
 
 	serviceObjectMetaData.Labels = serviceLabels
-	//Service Schema Annotation
+	annotations := map[string]string{
+		"kubernetes.io/change-cause": "spark-driver-service-created-by-native-submit",
+	}
+
+	// Merge driver annotations if they exist
 	if app.Spec.Driver.Annotations != nil {
-		serviceObjectMetaData.Annotations = app.Spec.Driver.Annotations
+		for key, value := range app.Spec.Driver.Annotations {
+			annotations[key] = value
+		}
 		log.Printf("Using driver annotations for service")
 	}
+
+	serviceObjectMetaData.Annotations = annotations
+	log.Printf("Service annotations set: %+v", annotations)
+
+	// // Add finalizer to prevent garbage collection
+	// serviceObjectMetaData.Finalizers = []string{"service.native-submit.io/finalizer"}
+	// log.Printf("Service finalizers set: %+v", serviceObjectMetaData.Finalizers)
 
 	//Service Schema Creation
 	driverPodService := &apiv1.Service{
@@ -111,10 +109,10 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 			Selector:        serviceSelectorLabels,
 			SessionAffinity: None,
 			Type:            ClusterIP,
-			IPFamilies:      ipFamilies[:],
 		},
 	}
 	log.Printf("Driver service object created with %d ports", len(driverPodService.Spec.Ports))
+	log.Printf("Driver service object: %+v", driverPodService)
 
 	//K8S API Server Call to create Service
 	log.Printf("Attempting to create/update driver service...")
@@ -140,7 +138,6 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 		//Copying over the data to existing service
 		existingService.ObjectMeta = serviceObjectMetaData
 		existingService.Spec = driverPodService.Spec
-		//updateErr := kubeClient.Update(context.TODO(), existingService)
 		_, updateErr := kubeClient.CoreV1().Services(app.Namespace).Update(context.TODO(), existingService, metav1.UpdateOptions{})
 
 		if updateErr != nil {
@@ -163,28 +160,81 @@ func Create(app *v1beta2.SparkApplication, serviceSelectorLabels map[string]stri
 func createAndCheckDriverService(kubeClient *kubernetes.Clientset, app *v1beta2.SparkApplication, driverPodService *apiv1.Service, attemptCount int, serviceName string) error {
 	const sleepDuration = 2000 * time.Millisecond
 
-	for iteration := 0; iteration < attemptCount; iteration++ {
+	log.Printf("=== Starting createAndCheckDriverService for app: %s, service: %s, namespace: %s ===", app.Name, serviceName, app.Namespace)
+	log.Printf("Service object details - Name: %s, Namespace: %s, ResourceVersion: %s", driverPodService.Name, driverPodService.Namespace, driverPodService.ResourceVersion)
+	log.Printf("Service labels: %+v", driverPodService.Labels)
+	log.Printf("Service selector: %+v", driverPodService.Spec.Selector)
+	log.Printf("Service owner references: %+v", driverPodService.OwnerReferences)
+	log.Printf("Attempt count: %d, Sleep duration: %v", attemptCount, sleepDuration)
 
-		_, err := kubeClient.CoreV1().Services(driverPodService.Namespace).Get(context.TODO(), driverPodService.Name, metav1.GetOptions{})
+	for iteration := 0; iteration < attemptCount; iteration++ {
+		log.Printf("--- Iteration %d/%d ---", iteration+1, attemptCount)
+
+		// Check if service exists
+		log.Printf("Checking if service %s exists in namespace %s...", driverPodService.Name, driverPodService.Namespace)
+		existingService, err := kubeClient.CoreV1().Services(driverPodService.Namespace).Get(context.TODO(), driverPodService.Name, metav1.GetOptions{})
 
 		if apiErrors.IsNotFound(err) {
+			log.Printf("Service %s NOT FOUND in namespace %s (iteration %d)", driverPodService.Name, driverPodService.Namespace, iteration+1)
+			log.Printf("Sleeping for %v before attempting to create service...", sleepDuration)
 			time.Sleep(sleepDuration)
-			glog.Info("Service does not exist, attempt #", iteration+2, " to create service for the app %s", app.Name)
+
+			log.Printf("Attempting to create service %s in namespace %s (attempt #%d)", driverPodService.Name, driverPodService.Namespace, iteration+2)
+			log.Printf("Clearing ResourceVersion before creation (was: %s)", driverPodService.ResourceVersion)
 			driverPodService.ResourceVersion = ""
-			_, dvrSvcErr := kubeClient.CoreV1().Services(app.Namespace).Create(context.TODO(), driverPodService, metav1.CreateOptions{})
+
+			createdService, dvrSvcErr := kubeClient.CoreV1().Services(app.Namespace).Create(context.TODO(), driverPodService, metav1.CreateOptions{})
 			if dvrSvcErr != nil {
 				if !apiErrors.IsAlreadyExists(dvrSvcErr) {
+					log.Printf("ERROR: Failed to create service %s: %v", driverPodService.Name, dvrSvcErr)
 					return fmt.Errorf("unable to create driver service : %w", dvrSvcErr)
 				} else {
-					glog.Info("Driver service already exists, ignoring attempt to create it")
+					log.Printf("INFO: Driver service %s already exists, ignoring attempt to create it", driverPodService.Name)
+					// Try to get the existing service to verify it's accessible
+					existingService, getErr := kubeClient.CoreV1().Services(app.Namespace).Get(context.TODO(), driverPodService.Name, metav1.GetOptions{})
+					if getErr != nil {
+						log.Printf("WARNING: Service exists but cannot be retrieved: %v", getErr)
+					} else {
+						log.Printf("SUCCESS: Retrieved existing service - Name: %s, UID: %s, ResourceVersion: %s",
+							existingService.Name, existingService.UID, existingService.ResourceVersion)
+					}
+				}
+			} else {
+				log.Printf("SUCCESS: Service %s created successfully", driverPodService.Name)
+				log.Printf("Created service details - Name: %s, UID: %s, ResourceVersion: %s, CreationTimestamp: %v",
+					createdService.Name, createdService.UID, createdService.ResourceVersion, createdService.CreationTimestamp)
+				log.Printf("Created service labels: %+v", createdService.Labels)
+				log.Printf("Created service selector: %+v", createdService.Spec.Selector)
+				log.Printf("Created service owner references: %+v", createdService.OwnerReferences)
+			}
+		} else if err != nil {
+			log.Printf("ERROR: Failed to check if service %s exists: %v", driverPodService.Name, err)
+			return fmt.Errorf("error checking service existence: %w", err)
+		} else {
+			log.Printf("SUCCESS: Driver Service %s found in attempt %d for app %s", driverPodService.Name, iteration+2, app.Name)
+			log.Printf("Existing service details - Name: %s, UID: %s, ResourceVersion: %s, CreationTimestamp: %v",
+				existingService.Name, existingService.UID, existingService.ResourceVersion, existingService.CreationTimestamp)
+			log.Printf("Existing service labels: %+v", existingService.Labels)
+			log.Printf("Existing service selector: %+v", existingService.Spec.Selector)
+			log.Printf("Existing service owner references: %+v", existingService.OwnerReferences)
+
+			// Check if service has proper owner references
+			if len(existingService.OwnerReferences) == 0 {
+				log.Printf("WARNING: Service %s has no owner references, which may cause garbage collection", existingService.Name)
+			} else {
+				log.Printf("Service %s has %d owner reference(s)", existingService.Name, len(existingService.OwnerReferences))
+				for i, ownerRef := range existingService.OwnerReferences {
+					log.Printf("  Owner reference %d: Kind=%s, Name=%s, UID=%s, Controller=%v",
+						i+1, ownerRef.Kind, ownerRef.Name, ownerRef.UID, ownerRef.Controller)
 				}
 			}
-		} else {
-			glog.Info("Driver Service found in attempt", iteration+2, "for the app %s", app.Name)
+
 			return nil
 		}
 	}
 
+	log.Printf("WARNING: Service creation/verification failed after %d attempts for app %s", attemptCount, app.Name)
+	log.Printf("=== Completed createAndCheckDriverService for app: %s ===", app.Name)
 	return nil
 }
 

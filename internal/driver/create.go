@@ -20,14 +20,14 @@ import (
 )
 
 // Helper func to create Driver Pod of the Spark Application
-func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driverConfigMapName string, kubeClient *kubernetes.Clientset, appSpecVolumeMounts []apiv1.VolumeMount, appSpecVolumes []apiv1.Volume) error {
+func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driverConfigMapName string, kubeClient *kubernetes.Clientset, appSpecVolumeMounts []apiv1.VolumeMount, appSpecVolumes []apiv1.Volume) (string, error) {
 	log.Printf("=== Starting Driver Pod creation for app: %s, namespace: %s ===", app.Name, app.Namespace)
 	log.Printf("Driver ConfigMap name: %s", driverConfigMapName)
 	log.Printf("Service labels count: %d", len(serviceLabels))
 
 	if app == nil {
 		log.Printf("ERROR: Spark application is nil")
-		return fmt.Errorf("spark application cannot be nil")
+		return "", fmt.Errorf("spark application cannot be nil")
 	}
 
 	//Load template file, if one supplied
@@ -40,7 +40,7 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 		initialPod, err = loadPodFromTemplate(driverPodtemplateFile, podTemplateDriverContainerName, app.Spec.SparkConf)
 		if err != nil {
 			log.Printf("ERROR: Failed to load template file: %v", err)
-			return fmt.Errorf("failed to load template file for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, err)
+			return "", fmt.Errorf("failed to load template file for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, err)
 		}
 		log.Printf("Successfully loaded pod template")
 	}
@@ -97,9 +97,6 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	if app.Spec.NodeSelector != nil {
 		driverPodSpec.NodeSelector = app.Spec.NodeSelector
 	} else if app.Spec.Driver.NodeSelector != nil {
-		//for key, value := range app.Spec.Driver.NodeSelector {
-		//	driverPodSpec.NodeSelector[key] = value
-		//}
 		driverPodSpec.NodeSelector = app.Spec.Driver.NodeSelector
 	} else {
 		nodeSelectorList := make(map[string]string)
@@ -166,6 +163,8 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 		}
 	}
 	//Service Account
+	log.Printf("Service account: %v", app.Spec.Driver.ServiceAccount)
+
 	if app.Spec.Driver.ServiceAccount != nil {
 		driverPodSpec.ServiceAccountName = *app.Spec.Driver.ServiceAccount
 	} else if common.CheckSparkConf(app.Spec.SparkConf, "spark.kubernetes.authenticate.driver.serviceAccountName") {
@@ -241,7 +240,7 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	var containerSpecList []apiv1.Container
 	localDirFeatureSetupError := handleLocalDirsFeatureStep(app, resolvedLocalDirs, &driverPodVolumes, &driverPodContainerSpec.VolumeMounts, &driverPodContainerSpec.Env, appSpecVolumeMounts, appSpecVolumes)
 	if localDirFeatureSetupError != nil {
-		return fmt.Errorf("failed to setup local directory for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, localDirFeatureSetupError)
+		return "", fmt.Errorf("failed to setup local directory for the driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, localDirFeatureSetupError)
 	}
 
 	volumeExtension := "-volume"
@@ -306,11 +305,18 @@ func Create(app *v1beta2.SparkApplication, serviceLabels map[string]string, driv
 	})
 
 	if createPodErr != nil {
-		return fmt.Errorf("failed to create/update driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, createPodErr)
+		return "", fmt.Errorf("failed to create/update driver pod %s in namespace %s: %v", common.GetDriverPodName(app), app.Namespace, createPodErr)
 	}
 
-	log.Printf("=== Driver Pod creation successful for app: %s, namespace: %s ===", app.Name, app.Namespace)
-	return nil
+	// Get the created pod to retrieve its UID
+	pod, err := kubeClient.CoreV1().Pods(app.Namespace).Get(context.TODO(), common.GetDriverPodName(app), metav1.GetOptions{})
+	if err != nil {
+		log.Printf("WARNING: Failed to retrieve created pod for UID: %v", err)
+		return "", nil // Return empty UID but no error since pod was created successfully
+	}
+
+	log.Printf("=== Driver Pod creation successful for app: %s, namespace: %s, Pod UID: %s ===", app.Name, app.Namespace, pod.UID)
+	return string(pod.UID), nil
 }
 
 func handleSideCars(app *v1beta2.SparkApplication, containerSpecList []apiv1.Container, appSpecVolumes []apiv1.Volume) []apiv1.Container {
@@ -665,7 +671,7 @@ func handleResources(app *v1beta2.SparkApplication) apiv1.ResourceRequirements {
 		memoryQuantity = resource.MustParse(app.Spec.SparkConf[SparkDriverMemory])
 		memoryValExists = true
 	} else { //setting default value
-		memoryQuantity = resource.MustParse("1")
+		memoryQuantity = resource.MustParse("512Mi")
 	}
 
 	var cpuQuantity resource.Quantity

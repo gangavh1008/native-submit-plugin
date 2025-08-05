@@ -69,25 +69,7 @@ func createConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, co
 		}
 	}
 
-	// Try to get the actual SparkApplication from the cluster to use its UID for owner reference
-	var ownerRef *metav1.OwnerReference
-	sparkAppClient := kubeClient.CoreV1().RESTClient().Get().Resource("sparkapplications").Namespace(app.Namespace).Name(app.Name)
-	var sparkApp v1beta2.SparkApplication
-	err = sparkAppClient.Do(context.TODO()).Into(&sparkApp)
-	if err != nil {
-		if apiErrors.IsNotFound(err) {
-			log.Printf("SparkApplication %s not found in cluster, creating ConfigMap without owner reference", app.Name)
-			// No owner reference since SparkApplication doesn't exist in cluster yet
-		} else {
-			log.Printf("WARNING: Failed to get SparkApplication from cluster: %v", err)
-			// Continue without owner reference
-		}
-	} else {
-		// Use the actual SparkApplication from cluster for owner reference
-		ownerRef = common.GetOwnerReference(&sparkApp)
-		log.Printf("Found SparkApplication in cluster - UID: %s, Name: %s, Kind: %s",
-			ownerRef.UID, ownerRef.Name, ownerRef.Kind)
-	}
+	ownerRef := common.GetConfigMapOwnerReference(app)
 
 	// Log ConfigMap creation details for debugging
 	if ownerRef != nil {
@@ -100,24 +82,11 @@ func createConfigMapUtil(configMapName string, app *v1beta2.SparkApplication, co
 
 	configMap := &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName,
-			Namespace: app.Namespace,
+			Name:            configMapName,
+			Namespace:       app.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*ownerRef},
 		},
 		Data: configMapData,
-	}
-
-	// Add owner reference if we have one
-	if ownerRef != nil {
-		configMap.OwnerReferences = []metav1.OwnerReference{*ownerRef}
-	}
-
-	log.Printf("ConfigMap object created with %d data entries", len(configMap.Data))
-	if len(configMap.OwnerReferences) > 0 {
-		log.Printf("ConfigMap object details - Name: %s, Namespace: %s, Owner UID: %s",
-			configMap.ObjectMeta.Name, configMap.ObjectMeta.Namespace, configMap.OwnerReferences[0].UID)
-	} else {
-		log.Printf("ConfigMap object details - Name: %s, Namespace: %s (no owner reference)",
-			configMap.ObjectMeta.Name, configMap.ObjectMeta.Namespace)
 	}
 
 	createConfigMapErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
