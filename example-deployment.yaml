@@ -3,10 +3,6 @@ kind: Deployment
 metadata:
   name: spark-operator-controller
   namespace: spark-operator
-  labels:
-    app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: spark-operator
-    app.kubernetes.io/name: spark-operator
 spec:
   replicas: 1
   selector:
@@ -16,20 +12,14 @@ spec:
       app.kubernetes.io/name: spark-operator
   template:
     metadata:
-      annotations:
-        prometheus.io/path: /metrics
-        prometheus.io/port: "8080"
-        prometheus.io/scrape: "true"
       labels:
         app.kubernetes.io/component: controller
         app.kubernetes.io/instance: spark-operator
         app.kubernetes.io/name: spark-operator
     spec:
-      automountServiceAccountToken: true
       containers:
       - name: spark-operator-controller
-        image: ghcr.io/kubeflow/spark-operator/controller:gangav0.0.1
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/kubeflow/spark-operator/controller:2.2.1
         args:
         - controller
         - start
@@ -40,40 +30,30 @@ spec:
         - --enable-metrics=true
         - --metrics-bind-address=:8080
         - --metrics-endpoint=/metrics
-        - --metrics-prefix=
-        - --metrics-labels=app_type
-        - --metrics-job-start-latency-buckets=30,60,90,120,150,180,210,240,270,300
         - --leader-election=true
         - --leader-election-lock-name=spark-operator-controller-lock
         - --leader-election-lock-namespace=spark-operator
-        - --workqueue-ratelimiter-bucket-qps=50
-        - --workqueue-ratelimiter-bucket-size=500
-        - --workqueue-ratelimiter-max-delay=6h
-        - --driver-pod-creation-grace-period=10s
-        - --max-tracked-executor-per-app=1000
-        livenessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /healthz
-            port: 8081
-            scheme: HTTP
-          periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 1
+        - --submitter-type=grpc
+        - --grpc-server-address=localhost:50051
+        - --grpc-submit-timeout=10s
         ports:
         - containerPort: 8080
           name: metrics
           protocol: TCP
-        readinessProbe:
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          periodSeconds: 10
+          timeoutSeconds: 1
           failureThreshold: 3
+        readinessProbe:
           httpGet:
             path: /readyz
             port: 8081
-            scheme: HTTP
           periodSeconds: 10
-          successThreshold: 1
           timeoutSeconds: 1
-        resources: {}
+          failureThreshold: 3
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -84,32 +64,29 @@ spec:
           runAsNonRoot: true
           seccompProfile:
             type: RuntimeDefault
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
         volumeMounts:
         - mountPath: /tmp
           name: tmp
       
-      # Native Submit gRPC Service as sidecar
-      - name: native-submit-grpc
-        image: ghcr.io/kubeflow/spark-operator/native-submit:latest
-        imagePullPolicy: IfNotPresent
+      # Native Submit Plugin Sidecar
+      - name: native-submit
+        image: your-registry/native-submit:latest
+        ports:
+        - containerPort: 50051
+          name: grpc
+          protocol: TCP
+        - containerPort: 9090
+          name: health
+          protocol: TCP
         env:
         - name: GRPC_PORT
           value: "50051"
         - name: HEALTH_PORT
-          value: "8080"
-        ports:
-        - name: grpc
-          containerPort: 50051
-          protocol: TCP
-        - name: health
-          containerPort: 8080
-          protocol: TCP
+          value: "9090"
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8080
+            port: 9090
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -117,7 +94,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 8080
+            port: 9090
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
@@ -142,43 +119,10 @@ spec:
           seccompProfile:
             type: RuntimeDefault
       
-      dnsPolicy: ClusterFirst
-      restartPolicy: Always
-      schedulerName: default-scheduler
-      securityContext:
-        fsGroup: 185
-      serviceAccount: spark-operator-controller
-      serviceAccountName: spark-operator-controller
-      terminationGracePeriodSeconds: 30
       volumes:
       - emptyDir:
           sizeLimit: 1Gi
         name: tmp
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: spark-operator-controller
-  namespace: spark-operator
-  labels:
-    app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: spark-operator
-    app.kubernetes.io/name: spark-operator
-spec:
-  selector:
-    app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: spark-operator
-    app.kubernetes.io/name: spark-operator
-  ports:
-  - name: metrics
-    protocol: TCP
-    port: 8080
-    targetPort: 8080
-  - name: grpc
-    protocol: TCP
-    port: 50051
-    targetPort: 50051
-  - name: health
-    protocol: TCP
-    port: 8080
-    targetPort: 8080 
+      securityContext:
+        fsGroup: 185
+      serviceAccountName: spark-operator-controller 
